@@ -290,3 +290,49 @@ export async function createSampleMemeVideoFile(): Promise<File> {
   const blob = await stopped;
   return new File([blob], 'sample-meme-dance.webm', { type: 'video/webm' });
 }
+
+/**
+ * Generates a compact, visibly soft & JPEG-compressed (220x220, Q=0.22) sample image
+ * so users can immediately test CLARIFY (Real-ESRGAN 4x / Steam DSP) on real degradation.
+ */
+export async function createSampleBlurryImageFile(): Promise<File> {
+  const hiSize = 440;
+  const hiCanvas = document.createElement('canvas');
+  hiCanvas.width = hiSize;
+  hiCanvas.height = hiSize;
+  const hiCtx = hiCanvas.getContext('2d');
+  if (!hiCtx) throw new Error('Canvas 2D context is unavailable.');
+
+  drawMemeSceneFrame(hiCtx, hiSize, hiSize, 0.12);
+
+  // Add fine typography & micro details that visibly degrade when downsampled + blurred
+  hiCtx.fillStyle = '#111111';
+  hiCtx.fillRect(hiSize * 0.22, hiSize * 0.8, hiSize * 0.56, hiSize * 0.13);
+  hiCtx.strokeStyle = '#FFFFFF';
+  hiCtx.lineWidth = 3;
+  hiCtx.strokeRect(hiSize * 0.22, hiSize * 0.8, hiSize * 0.56, hiSize * 0.13);
+  hiCtx.fillStyle = '#FFE600';
+  hiCtx.font = 'bold 24px monospace';
+  hiCtx.textAlign = 'center';
+  hiCtx.textBaseline = 'middle';
+  hiCtx.fillText('KILOWASH 24H', hiSize * 0.5, hiSize * 0.865);
+
+  const lowSize = 220;
+  const lowCanvas = document.createElement('canvas');
+  lowCanvas.width = lowSize;
+  lowCanvas.height = lowSize;
+  const lowCtx = lowCanvas.getContext('2d');
+  if (!lowCtx) throw new Error('Canvas 2D context is unavailable.');
+  lowCtx.filter = 'blur(1.4px)';
+  lowCtx.drawImage(hiCanvas, 0, 0, lowSize, lowSize);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    lowCanvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Failed to build blurry sample JPEG.'))),
+      'image/jpeg',
+      0.22
+    );
+  });
+
+  return new File([blob], 'sample-blurry-220px.jpg', { type: 'image/jpeg' });
+}

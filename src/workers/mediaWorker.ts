@@ -1,7 +1,15 @@
-import { AutoModel, AutoProcessor, RawImage, env } from '@huggingface/transformers';
+import {
+  AutoModel,
+  AutoProcessor,
+  RawImage,
+  env,
+} from '@huggingface/transformers';
 import type { PreTrainedModel, Processor } from '@huggingface/transformers';
+import * as ort from 'onnxruntime-web';
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
+import type { ClarifyAppliedBackend } from '../types/laundry';
 import type {
+  ClarifyJob,
   GifJob,
   PngJob,
   SegmentJob,
@@ -16,11 +24,22 @@ interface LoadedModel {
   backend: SegmentationBackend;
 }
 
+interface LoadedClarifySession {
+  session: ort.InferenceSession;
+  backend: 'webgpu' | 'wasm';
+}
+
 const MODEL_ID = 'briaai/RMBG-1.4';
+const CLARIFY_MODEL_URL =
+  'https://huggingface.co/CoderViking/realesr-general-x4v3-onnx/resolve/main/realesr-general-x4v3.onnx';
+const CLARIFY_CACHE_NAME = 'kilowash-clarify-onnx-v1';
+const CLARIFY_TILE_SIZE = 128;
+const CLARIFY_TILE_OVERLAP = 12;
+const CLARIFY_TILE_STRIDE = CLARIFY_TILE_SIZE - CLARIFY_TILE_OVERLAP * 2; // 104px
 
 /**
  * Dedicated module worker. Runs every heavy pixel/AI job so the main thread never stalls:
- * RMBG-1.4 inference (WebGPU -> WASM q8 fallback), Sobel offline fallback, and gifenc quantization.
+ * RMBG-1.4 inference (WebGPU -> WASM q8 fallback), Real-ESRGAN x4v3 + Steam DSP, Sobel offline fallback, and gifenc quantization.
  */
 const workerScope = self as unknown as {
   postMessage: (message: WorkerResponse, transfer?: Transferable[]) => void;
@@ -29,6 +48,8 @@ const workerScope = self as unknown as {
 
 let loadedModel: LoadedModel | null = null;
 let modelLoadPromise: Promise<LoadedModel> | null = null;
+let loadedClarifySession: LoadedClarifySession | null = null;
+let clarifyLoadPromise: Promise<LoadedClarifySession> | null = null;
 let webgpuRejected = false;
 let offlineOnly = false;
 
@@ -694,12 +715,529 @@ async function runGifEncoding(job: GifJob): Promise<void> {
   post({ type: 'GIF_DONE', id, blob: best.blob, width: best.width, height: best.height });
 }
 
+function clampByte(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+}
+
+/**
+ * Fast 0-MB client-side enhancement:
+ * 1) 3x3 edge-preserving luminance bilateral smooth (reduces JPEG blockiness)
+ * 2) Unsharp mask sharpening
+ * 3) Subtle S-curve micro-contrast & chroma lift
+ */
+function runSteamDspEnhance(source: ImageBitmap): ImageBitmap {
+  const width = source.width;
+  const height = source.height;
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable.');
+
+  ctx.drawImage(source, 0, 0);
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const src = imgData.data;
+  const pixelCount = width * height;
+
+  const smoothR = new Float32Array(pixelCount);
+  const smoothG = new Float32Array(pixelCount);
+  const smoothB = new Float32Array(pixelCount);
+
+  const sigmaRange = 16;
+  const invTwoSigmaSq = 1 / (2 * sigmaRange * sigmaRange);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const p = idx * 4;
+      const cr = src[p];
+      const cg = src[p + 1];
+      const cb = src[p + 2];
+      const cLuma = 0.299 * cr + 0.587 * cg + 0.114 * cb;
+
+      let sumW = 0;
+      let accR = 0;
+      let accG = 0;
+      let accB = 0;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = Math.max(0, Math.min(height - 1, y + dy));
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = Math.max(0, Math.min(width - 1, x + dx));
+          const np = (ny * width + nx) * 4;
+          const nr = src[np];
+          const ng = src[np + 1];
+          const nb = src[np + 2];
+          const nLuma = 0.299 * nr + 0.587 * ng + 0.114 * nb;
+          const diff = nLuma - cLuma;
+          const spatial = dx === 0 && dy === 0 ? 1.0 : dx === 0 || dy === 0 ? 0.72 : 0.52;
+          const w = spatial * Math.exp(-(diff * diff) * invTwoSigmaSq);
+          sumW += w;
+          accR += nr * w;
+          accG += ng * w;
+          accB += nb * w;
+        }
+      }
+
+      smoothR[idx] = accR / sumW;
+      smoothG[idx] = accG / sumW;
+      smoothB[idx] = accB / sumW;
+    }
+  }
+
+  const out = new Uint8ClampedArray(src.length);
+  const sharpAmount = 1.05;
+  const threshold = 2;
+  const contrast = 1.09;
+  const satBoost = 1.08;
+
+  for (let y = 0; y < height; y++) {
+    const ym1 = Math.max(0, y - 1);
+    const yp1 = Math.min(height - 1, y + 1);
+    for (let x = 0; x < width; x++) {
+      const xm1 = Math.max(0, x - 1);
+      const xp1 = Math.min(width - 1, x + 1);
+      const idx = y * width + x;
+
+      const blurR =
+        (smoothR[ym1 * width + xm1] +
+          2 * smoothR[ym1 * width + x] +
+          smoothR[ym1 * width + xp1] +
+          2 * smoothR[y * width + xm1] +
+          4 * smoothR[idx] +
+          2 * smoothR[y * width + xp1] +
+          smoothR[yp1 * width + xm1] +
+          2 * smoothR[yp1 * width + x] +
+          smoothR[yp1 * width + xp1]) /
+        16;
+
+      const blurG =
+        (smoothG[ym1 * width + xm1] +
+          2 * smoothG[ym1 * width + x] +
+          smoothG[ym1 * width + xp1] +
+          2 * smoothG[y * width + xm1] +
+          4 * smoothG[idx] +
+          2 * smoothG[y * width + xp1] +
+          smoothG[yp1 * width + xm1] +
+          2 * smoothG[yp1 * width + x] +
+          smoothG[yp1 * width + xp1]) /
+        16;
+
+      const blurB =
+        (smoothB[ym1 * width + xm1] +
+          2 * smoothB[ym1 * width + x] +
+          smoothB[ym1 * width + xp1] +
+          2 * smoothB[y * width + xm1] +
+          4 * smoothB[idx] +
+          2 * smoothB[y * width + xp1] +
+          smoothB[yp1 * width + xm1] +
+          2 * smoothB[yp1 * width + x] +
+          smoothB[yp1 * width + xp1]) /
+        16;
+
+      const dr = smoothR[idx] - blurR;
+      const dg = smoothG[idx] - blurG;
+      const db = smoothB[idx] - blurB;
+
+      let r = Math.abs(dr) > threshold ? smoothR[idx] + dr * sharpAmount : smoothR[idx];
+      let g = Math.abs(dg) > threshold ? smoothG[idx] + dg * sharpAmount : smoothG[idx];
+      let b = Math.abs(db) > threshold ? smoothB[idx] + db * sharpAmount : smoothB[idx];
+
+      r = (r - 128) * contrast + 128;
+      g = (g - 128) * contrast + 128;
+      b = (b - 128) * contrast + 128;
+
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = luma + (r - luma) * satBoost;
+      g = luma + (g - luma) * satBoost;
+      b = luma + (b - luma) * satBoost;
+
+      const p = idx * 4;
+      out[p] = clampByte(r);
+      out[p + 1] = clampByte(g);
+      out[p + 2] = clampByte(b);
+      out[p + 3] = src[p + 3];
+    }
+  }
+
+  ctx.putImageData(new ImageData(out, width, height), 0, 0);
+  return canvas.transferToImageBitmap();
+}
+
+async function fetchClarifyModelBytes(jobId: number): Promise<Uint8Array> {
+  if (typeof caches !== 'undefined') {
+    try {
+      const cache = await caches.open(CLARIFY_CACHE_NAME);
+      const cached = await cache.match(CLARIFY_MODEL_URL);
+      if (cached && cached.ok) {
+        post({
+          type: 'CLARIFY_PROGRESS',
+          id: jobId,
+          percent: 32,
+          label: 'REAL-ESRGAN X4 // LOADED FROM CACHE',
+        });
+        return new Uint8Array(await cached.arrayBuffer());
+      }
+    } catch {
+      /* Cache API may be unavailable in restricted contexts */
+    }
+  }
+
+  post({
+    type: 'CLARIFY_PROGRESS',
+    id: jobId,
+    percent: 4,
+    label: 'DOWNLOADING REAL-ESRGAN X4 (4.8 MB)...',
+  });
+
+  const response = await fetch(CLARIFY_MODEL_URL);
+  if (!response.ok) {
+    throw new Error(`Model fetch failed (${response.status})`);
+  }
+
+  const totalBytes = Number(response.headers.get('content-length') ?? 0);
+  const reader = response.body?.getReader();
+  let bytes: Uint8Array;
+
+  if (reader) {
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.byteLength;
+        if (totalBytes > 0) {
+          const dlPct = Math.min(100, Math.round((received / totalBytes) * 100));
+          post({
+            type: 'CLARIFY_PROGRESS',
+            id: jobId,
+            percent: Math.min(35, Math.round(dlPct * 0.35)),
+            label: `DOWNLOADING REAL-ESRGAN X4 (${dlPct}%)`,
+          });
+        }
+      }
+    }
+    bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+  } else {
+    bytes = new Uint8Array(await response.arrayBuffer());
+  }
+
+  if (typeof caches !== 'undefined') {
+    try {
+      const cache = await caches.open(CLARIFY_CACHE_NAME);
+      await cache.put(
+        CLARIFY_MODEL_URL,
+        new Response(bytes.buffer as ArrayBuffer, {
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        })
+      );
+    } catch {
+      /* ignore cache write failure */
+    }
+  }
+
+  return bytes;
+}
+
+async function loadClarifySession(
+  backend: 'webgpu' | 'wasm',
+  bytes: Uint8Array,
+  jobId: number
+): Promise<LoadedClarifySession> {
+  if (!ort.env.wasm.wasmPaths && env.backends?.onnx?.wasm?.wasmPaths) {
+    ort.env.wasm.wasmPaths = env.backends.onnx.wasm.wasmPaths as never;
+  }
+
+  const backendLabel = backend === 'webgpu' ? 'WEBGPU' : 'WASM';
+  post({
+    type: 'CLARIFY_PROGRESS',
+    id: jobId,
+    percent: 38,
+    label: `INITIALIZING REAL-ESRGAN X4 (${backendLabel})...`,
+  });
+
+  const session = await ort.InferenceSession.create(bytes, {
+    executionProviders: [backend],
+  });
+
+  return { session, backend };
+}
+
+async function ensureClarifySessionLoaded(jobId: number): Promise<LoadedClarifySession> {
+  if (offlineOnly) {
+    throw new Error('Offline mode active.');
+  }
+  if (loadedClarifySession) return loadedClarifySession;
+  if (clarifyLoadPromise) return clarifyLoadPromise;
+
+  clarifyLoadPromise = (async () => {
+    const modelBytes = await fetchClarifyModelBytes(jobId);
+
+    if (!webgpuRejected && (await hasWebGpuAdapter())) {
+      try {
+        loadedClarifySession = await loadClarifySession('webgpu', modelBytes, jobId);
+        return loadedClarifySession;
+      } catch (err) {
+        webgpuRejected = true;
+        console.warn('[KILOWASH CLARIFY] WebGPU unavailable, falling back to WASM:', err);
+      }
+    }
+
+    loadedClarifySession = await loadClarifySession('wasm', modelBytes, jobId);
+    return loadedClarifySession;
+  })();
+
+  try {
+    return await clarifyLoadPromise;
+  } catch (err) {
+    clarifyLoadPromise = null;
+    throw err;
+  }
+}
+
+function buildTileStarts(total: number): number[] {
+  if (total <= CLARIFY_TILE_SIZE) return [0];
+  const starts: number[] = [];
+  for (let pos = 0; pos < total; pos += CLARIFY_TILE_STRIDE) {
+    const start = Math.min(pos, total - CLARIFY_TILE_SIZE);
+    if (!starts.includes(start)) {
+      starts.push(start);
+    }
+    if (start + CLARIFY_TILE_SIZE >= total) break;
+  }
+  return starts;
+}
+
+function tileFeatherWeight(
+  pos: number,
+  length: number,
+  hasLeading: boolean,
+  hasTrailing: boolean
+): number {
+  const feather = CLARIFY_TILE_OVERLAP * 4;
+  if (hasLeading && pos < feather) {
+    return 0.5 - 0.5 * Math.cos((Math.PI * (pos + 0.5)) / feather);
+  }
+  if (hasTrailing && pos >= length - feather) {
+    const dist = length - 1 - pos;
+    return 0.5 - 0.5 * Math.cos((Math.PI * (dist + 0.5)) / feather);
+  }
+  return 1;
+}
+
+async function runTiledRealEsrgan(
+  source: ImageBitmap,
+  preferMobileSafe: boolean,
+  jobId: number
+): Promise<{ bitmap: ImageBitmap; backend: ClarifyAppliedBackend; scaleFactor: number }> {
+  const loaded = await ensureClarifySessionLoaded(jobId);
+
+  // Cap input dimensions before 4x upscaling so browser output stays bounded (<= 2048px mobile, 3072px desktop).
+  const maxInputDim = preferMobileSafe ? 512 : 768;
+  const longest = Math.max(source.width, source.height);
+  const preScale = longest > maxInputDim ? maxInputDim / longest : 1;
+  const inW = Math.max(16, Math.round(source.width * preScale));
+  const inH = Math.max(16, Math.round(source.height * preScale));
+
+  const workCanvas = new OffscreenCanvas(inW, inH);
+  const workCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+  if (!workCtx) throw new Error('OffscreenCanvas 2D context unavailable.');
+  workCtx.imageSmoothingEnabled = true;
+  workCtx.imageSmoothingQuality = 'high';
+  workCtx.drawImage(source, 0, 0, inW, inH);
+
+  const scale = 4;
+  const outW = inW * scale;
+  const outH = inH * scale;
+  const accumR = new Float32Array(outW * outH);
+  const accumG = new Float32Array(outW * outH);
+  const accumB = new Float32Array(outW * outH);
+  const accumW = new Float32Array(outW * outH);
+
+  const xs = buildTileStarts(inW);
+  const ys = buildTileStarts(inH);
+  const totalTiles = xs.length * ys.length;
+  let completedTiles = 0;
+
+  const inputName = loaded.session.inputNames[0] ?? 'input';
+  const outputName = loaded.session.outputNames[0] ?? 'output';
+
+  for (const ty of ys) {
+    const tileH = Math.min(CLARIFY_TILE_SIZE, inH - ty);
+    for (const tx of xs) {
+      const tileW = Math.min(CLARIFY_TILE_SIZE, inW - tx);
+
+      const tileCanvas = new OffscreenCanvas(tileW, tileH);
+      const tileCtx = tileCanvas.getContext('2d', { willReadFrequently: true });
+      if (!tileCtx) throw new Error('Tile canvas context unavailable.');
+      tileCtx.drawImage(workCanvas, tx, ty, tileW, tileH, 0, 0, tileW, tileH);
+
+      const tilePixels = tileCtx.getImageData(0, 0, tileW, tileH).data;
+      const hw = tileW * tileH;
+      const nchw = new Float32Array(3 * hw);
+      for (let i = 0; i < hw; i++) {
+        const p = i * 4;
+        nchw[i] = tilePixels[p] / 255;
+        nchw[hw + i] = tilePixels[p + 1] / 255;
+        nchw[hw * 2 + i] = tilePixels[p + 2] / 255;
+      }
+
+      const inputTensor = new ort.Tensor('float32', nchw, [1, 3, tileH, tileW]);
+      const outputs = await loaded.session.run({ [inputName]: inputTensor });
+      const outTensor = outputs[outputName] ?? Object.values(outputs)[0];
+      if (!outTensor) {
+        throw new Error('Real-ESRGAN returned an empty output tensor.');
+      }
+
+      const outData = outTensor.data as Float32Array;
+      const expectedW = tileW * scale;
+      const expectedH = tileH * scale;
+      const outPlane = expectedW * expectedH;
+
+      const hasLeft = tx > 0;
+      const hasRight = tx + tileW < inW;
+      const hasTop = ty > 0;
+      const hasBottom = ty + tileH < inH;
+
+      for (let py = 0; py < expectedH; py++) {
+        const wy = tileFeatherWeight(py, expectedH, hasTop, hasBottom);
+        const dstY = ty * scale + py;
+        for (let px = 0; px < expectedW; px++) {
+          const wx = tileFeatherWeight(px, expectedW, hasLeft, hasRight);
+          const w = Math.max(1e-4, wx * wy);
+          const sIdx = py * expectedW + px;
+          const dIdx = dstY * outW + (tx * scale + px);
+          accumR[dIdx] += Math.max(0, Math.min(1, outData[sIdx])) * 255 * w;
+          accumG[dIdx] += Math.max(0, Math.min(1, outData[outPlane + sIdx])) * 255 * w;
+          accumB[dIdx] += Math.max(0, Math.min(1, outData[outPlane * 2 + sIdx])) * 255 * w;
+          accumW[dIdx] += w;
+        }
+      }
+
+      try {
+        (inputTensor as unknown as { dispose?: () => void }).dispose?.();
+        (outTensor as unknown as { dispose?: () => void }).dispose?.();
+      } catch {
+        /* ignore dispose errors */
+      }
+
+      completedTiles += 1;
+      const pct = 42 + Math.round((completedTiles / totalTiles) * 56);
+      post({
+        type: 'CLARIFY_PROGRESS',
+        id: jobId,
+        percent: Math.min(98, pct),
+        label: `REAL-ESRGAN 4X // TILE ${completedTiles}/${totalTiles}`,
+      });
+    }
+  }
+
+  const alphaCanvas = new OffscreenCanvas(outW, outH);
+  const alphaCtx = alphaCanvas.getContext('2d', { willReadFrequently: true });
+  if (!alphaCtx) throw new Error('Alpha canvas context unavailable.');
+  alphaCtx.imageSmoothingEnabled = true;
+  alphaCtx.imageSmoothingQuality = 'high';
+  alphaCtx.drawImage(source, 0, 0, outW, outH);
+  const alphaBytes = alphaCtx.getImageData(0, 0, outW, outH).data;
+
+  const outBytes = new Uint8ClampedArray(outW * outH * 4);
+  for (let i = 0; i < outW * outH; i++) {
+    const w = accumW[i] || 1;
+    const p = i * 4;
+    outBytes[p] = clampByte(accumR[i] / w);
+    outBytes[p + 1] = clampByte(accumG[i] / w);
+    outBytes[p + 2] = clampByte(accumB[i] / w);
+    outBytes[p + 3] = alphaBytes[p + 3];
+  }
+
+  const outCanvas = new OffscreenCanvas(outW, outH);
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) throw new Error('Output canvas context unavailable.');
+  outCtx.putImageData(new ImageData(outBytes, outW, outH), 0, 0);
+
+  return {
+    bitmap: outCanvas.transferToImageBitmap(),
+    backend: loaded.backend === 'webgpu' ? 'ai-webgpu' : 'ai-wasm',
+    scaleFactor: outW / source.width,
+  };
+}
+
+async function runClarifyJob(job: ClarifyJob): Promise<void> {
+  const { id, bitmap, mode, preferMobileSafe } = job;
+  try {
+    const longest = Math.max(bitmap.width, bitmap.height);
+    const hasGpu = await hasWebGpuAdapter();
+    const autoAiCap = hasGpu ? (preferMobileSafe ? 512 : 768) : 360;
+    const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+
+    const shouldTryAi =
+      mode === 'ai' || (mode === 'auto' && isOnline && !offlineOnly && longest <= autoAiCap);
+
+    if (shouldTryAi) {
+      try {
+        const result = await runTiledRealEsrgan(bitmap, preferMobileSafe, id);
+        post(
+          {
+            type: 'CLARIFY_DONE',
+            id,
+            bitmap: result.bitmap,
+            backend: result.backend,
+            scaleFactor: result.scaleFactor,
+          },
+          [result.bitmap]
+        );
+        return;
+      } catch (err) {
+        console.warn('[KILOWASH CLARIFY] Real-ESRGAN unavailable, falling back to Steam DSP:', err);
+        post({
+          type: 'CLARIFY_PROGRESS',
+          id,
+          percent: 65,
+          label: 'AI UNAVAILABLE // RUNNING STEAM DSP...',
+        });
+      }
+    } else {
+      post({
+        type: 'CLARIFY_PROGRESS',
+        id,
+        percent: 55,
+        label: 'STEAM DSP // DENOISE & CRISP POLISH...',
+      });
+    }
+
+    const steamBitmap = runSteamDspEnhance(bitmap);
+    post(
+      {
+        type: 'CLARIFY_DONE',
+        id,
+        bitmap: steamBitmap,
+        backend: 'steam-dsp',
+        scaleFactor: 1,
+      },
+      [steamBitmap]
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
 workerScope.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const job = event.data;
 
   switch (job.type) {
     case 'SEGMENT':
       runSegmentation(job).catch((err) => {
+        post({ type: 'JOB_ERROR', id: job.id, message: errorMessage(err) });
+      });
+      return;
+    case 'CLARIFY':
+      runClarifyJob(job).catch((err) => {
         post({ type: 'JOB_ERROR', id: job.id, message: errorMessage(err) });
       });
       return;

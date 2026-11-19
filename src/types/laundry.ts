@@ -1,6 +1,16 @@
 export type ThemeShift = 'day' | 'night';
 
-export type LaundryCycle = 'wash' | 'spin' | 'both';
+export type LaundryCycle = 'wash' | 'spin' | 'both' | 'clarify';
+
+export type ClarifyEngineMode = 'auto' | 'steam' | 'ai';
+
+export type ClarifyAppliedBackend = 'ai-webgpu' | 'ai-wasm' | 'steam-dsp';
+
+export interface ClarifyOptions {
+  mode: ClarifyEngineMode;
+  withWash: boolean;
+  withSpin: boolean;
+}
 
 export type MediaKind = 'image' | 'video';
 
@@ -29,6 +39,7 @@ export interface WashProgress {
     | 'loading-model'
     | 'filling'
     | 'extracting'
+    | 'clarifying'
     | 'washing'
     | 'rinsing'
     | 'spinning'
@@ -47,6 +58,10 @@ export interface LaundryReceipt {
   fileName: string;
   mediaKind: MediaKind;
   cycle: LaundryCycle;
+  hasTransparency: boolean;
+  enforcedTargetMB: boolean;
+  clarifyBackend?: ClarifyAppliedBackend;
+  beforeUrl?: string;
   originalSizeMB: number;
   finalSizeMB: number;
   targetMB: number;

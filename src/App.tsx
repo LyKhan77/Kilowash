@@ -14,7 +14,11 @@ import { LaundryMachine } from './components/LaundryMachine';
 import { LaundryBasketFixture, WallDispenserRackFixture } from './components/RoomFixtures';
 import { DryingLineScene } from './components/DryingLineScene';
 import { processImageLaundry, processVideoLaundry } from './services/mediaPipeline';
-import { createSampleMemeImageFile, createSampleMemeVideoFile } from './utils/sampleMedia';
+import {
+  createSampleBlurryImageFile,
+  createSampleMemeImageFile,
+  createSampleMemeVideoFile,
+} from './utils/sampleMedia';
 import {
   playCycleCompleteChime,
   playDoorLatch,
@@ -24,6 +28,7 @@ import {
   syncWashPhaseLoop,
 } from './utils/laundrySfx';
 import type {
+  ClarifyOptions,
   CropBox,
   ImageOutputFormat,
   LaundryCycle,
@@ -48,6 +53,7 @@ const CYCLE_ACCENT_MAP: Record<LaundryCycle, string> = {
   wash: '#00E5FF',
   spin: '#FF5416',
   both: '#FFE600',
+  clarify: '#22C55E',
 };
 
 async function detectAnimatedGifDuration(file: File): Promise<number | null> {
@@ -169,6 +175,11 @@ export default function App() {
   const [shift, setShift] = useState<ThemeShift>('day');
   const [activeScene, setActiveScene] = useState<RoomScene>('washer');
   const [cycle, setCycle] = useState<LaundryCycle>('both');
+  const [clarify, setClarify] = useState<ClarifyOptions>({
+    mode: 'auto',
+    withWash: false,
+    withSpin: false,
+  });
   const [targetMB, setTargetMB] = useState<number>(1.0);
   const [imageFormat, setImageFormat] = useState<ImageOutputFormat>('webp');
   const [videoFormat, setVideoFormat] = useState<VideoOutputFormat>('gif');
@@ -230,14 +241,16 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (receipt?.outputUrl) URL.revokeObjectURL(receipt.outputUrl);
+      if (receipt?.beforeUrl) URL.revokeObjectURL(receipt.beforeUrl);
     };
-  }, [receipt?.outputUrl]);
+  }, [receipt?.outputUrl, receipt?.beforeUrl]);
 
   const handleLoadFile = async (file: File) => {
     try {
       setErrorMsg(null);
       setReceipt((prev) => {
         if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
+        if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
         return null;
       });
       setProgress(IDLE_PROGRESS);
@@ -252,6 +265,7 @@ export default function App() {
       setCrop(DEFAULT_CROP);
 
       if (loaded.kind === 'video') {
+        setCycle((cur) => (cur === 'clarify' ? 'both' : cur));
         const end = Math.max(0.5, Math.min(8, Number(loaded.durationSec.toFixed(1))));
         setTrim({ start: 0, end, fps: 12 });
         if (loaded.sizeMB > 0.4) {
@@ -339,11 +353,30 @@ export default function App() {
     }
   };
 
+  const handleLoadSampleBlurryImage = async () => {
+    try {
+      setIsGeneratingSample(true);
+      setErrorMsg(null);
+      const blurryFile = await createSampleBlurryImageFile();
+      await handleLoadFile(blurryFile);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Failed to generate blurry sample image.'
+      );
+    } finally {
+      setIsGeneratingSample(false);
+    }
+  };
+
   const handleClearMedia = () => {
     if (isProcessing) return;
     playDoorLatch();
     setMedia(null);
-    setReceipt(null);
+    setReceipt((prev) => {
+      if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
+      if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
+      return null;
+    });
     setProgress(IDLE_PROGRESS);
     setErrorMsg(null);
     setActiveScene('washer');
@@ -351,8 +384,12 @@ export default function App() {
 
   const handleCycleDialClick = () => {
     playRotaryDialTick();
-    const order: LaundryCycle[] = ['wash', 'spin', 'both'];
-    setCycle((cur) => order[(order.indexOf(cur) + 1) % order.length]);
+    const order: LaundryCycle[] =
+      media?.kind === 'video' ? ['wash', 'spin', 'both'] : ['wash', 'spin', 'both', 'clarify'];
+    setCycle((cur) => {
+      const idx = order.indexOf(cur);
+      return order[(idx === -1 ? 0 : idx + 1) % order.length];
+    });
   };
 
   const handleStartCycle = async () => {
@@ -361,6 +398,7 @@ export default function App() {
     setErrorMsg(null);
     setReceipt((prev) => {
       if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
+      if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
       return null;
     });
 
@@ -371,6 +409,7 @@ export default function App() {
               file: media.file,
               objectUrl: media.objectUrl,
               cycle,
+              clarify,
               crop,
               targetMB,
               outputFormat: imageFormat,
@@ -733,6 +772,7 @@ export default function App() {
                           onFileSelected={handleLoadFile}
                           onLoadSampleImage={handleLoadSampleImage}
                           onLoadSampleVideo={handleLoadSampleVideo}
+                          onLoadSampleBlurryImage={handleLoadSampleBlurryImage}
                         />
                       </div>
                     </div>
@@ -743,6 +783,7 @@ export default function App() {
                         shift={shift}
                         media={media}
                         cycle={cycle}
+                        clarify={clarify}
                         onCycleClick={handleCycleDialClick}
                         onStartCycle={handleStartCycle}
                         targetMB={targetMB}
@@ -789,6 +830,8 @@ export default function App() {
                         media={media}
                         cycle={cycle}
                         onChangeCycle={setCycle}
+                        clarify={clarify}
+                        onChangeClarify={setClarify}
                         targetMB={targetMB}
                         onChangeTargetMB={setTargetMB}
                         imageFormat={imageFormat}

@@ -263,6 +263,7 @@ function mapPhaseToLoopMode(phase: WashProgress['phase']): LoopMode | null {
       return 'fill';
     case 'loading-model':
     case 'extracting':
+    case 'clarifying':
     case 'washing':
       return 'wash';
     case 'rinsing':

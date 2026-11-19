@@ -37,6 +37,10 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
 }) => {
   const [backdrop, setBackdrop] = useState<BackdropCloth>('checker');
   const [showBefore, setShowBefore] = useState(false);
+  const [compareSplit, setCompareSplit] = useState(50);
+  const [draggingSplit, setDraggingSplit] = useState(false);
+  const [compareZoom, setCompareZoom] = useState<1 | 2 | 4>(1);
+  const [compareFocus, setCompareFocus] = useState<'50% 50%' | '28% 28%' | '50% 82%'>('50% 50%');
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
 
   const touchUpFormat: ImageOutputFormat =
@@ -54,7 +58,7 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
     originalUrl: originalMedia?.kind === 'image' ? originalMedia.objectUrl : null,
     crop,
     format: touchUpFormat,
-    enforceTargetMB: receipt.cycle === 'spin' || receipt.cycle === 'both',
+    enforceTargetMB: receipt.enforcedTargetMB,
     targetMB: receipt.targetMB,
     onCommit: onOutputEdited,
   });
@@ -120,8 +124,16 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
     (showBefore && originalMedia?.kind === 'video') ||
     (!showBefore && receipt.fileExtension === 'webm');
 
+  const canCompareSplit = Boolean(
+    receipt.beforeUrl &&
+      receipt.clarifyBackend &&
+      !brush.armed &&
+      !showBefore &&
+      !renderAsVideo
+  );
+
   const metTarget =
-    receipt.cycle === 'wash' || receipt.finalSizeMB <= receipt.targetMB + 0.01;
+    !receipt.enforcedTargetMB || receipt.finalSizeMB <= receipt.targetMB + 0.01;
 
   return (
     <div className="relative flex flex-col justify-between min-h-[560px]">
@@ -300,6 +312,100 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
                     playsInline
                     className="max-w-full max-h-full object-contain p-3"
                   />
+                ) : canCompareSplit && receipt.beforeUrl ? (
+                  <div
+                    role="slider"
+                    aria-label="Before and after clarify comparison"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(compareSplit)}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowLeft') setCompareSplit((s) => Math.max(0, s - 5));
+                      if (e.key === 'ArrowRight') setCompareSplit((s) => Math.min(100, s + 5));
+                    }}
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      setDraggingSplit(true);
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                      setCompareSplit(Math.max(0, Math.min(100, pct)));
+                    }}
+                    onPointerMove={(e) => {
+                      if (!draggingSplit) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                      setCompareSplit(Math.max(0, Math.min(100, pct)));
+                    }}
+                    onPointerUp={() => setDraggingSplit(false)}
+                    onPointerCancel={() => setDraggingSplit(false)}
+                    className="relative w-full h-full select-none cursor-ew-resize touch-none"
+                  >
+                    <img
+                      src={receipt.outputUrl}
+                      alt="After Clarify output"
+                      draggable={false}
+                      className="absolute inset-0 w-full h-full object-contain p-3 pointer-events-none transition-transform duration-200"
+                      style={{
+                        transform: `scale(${compareZoom})`,
+                        transformOrigin: compareFocus,
+                      }}
+                    />
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ clipPath: `inset(0 ${100 - compareSplit}% 0 0)` }}
+                    >
+                      <img
+                        src={receipt.beforeUrl}
+                        alt="Before Clarify input"
+                        draggable={false}
+                        className="w-full h-full object-contain p-3 transition-transform duration-200"
+                        style={{
+                          transform: `scale(${compareZoom})`,
+                          transformOrigin: compareFocus,
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 pointer-events-none z-20"
+                      style={{
+                        left: `${compareSplit}%`,
+                        backgroundColor: '#22C55E',
+                        boxShadow: '0 0 0 1px #111111',
+                      }}
+                    >
+                      <span
+                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 px-1.5 py-0.5 font-mono text-[9px] font-bold whitespace-nowrap"
+                        style={{
+                          backgroundColor: '#22C55E',
+                          color: '#111111',
+                          border: '2px solid #111111',
+                        }}
+                      >
+                        ◀ ▶
+                      </span>
+                    </div>
+                    <span
+                      className="absolute bottom-2 left-2.5 z-20 px-1.5 py-0.5 font-mono text-[9px] font-bold"
+                      style={{
+                        backgroundColor: '#111111',
+                        color: '#FFE600',
+                        border: '1px solid #FFE600',
+                      }}
+                    >
+                      BEFORE
+                    </span>
+                    <span
+                      className="absolute bottom-2 right-2.5 z-20 px-1.5 py-0.5 font-mono text-[9px] font-bold"
+                      style={{
+                        backgroundColor: '#111111',
+                        color: '#22C55E',
+                        border: '1px solid #22C55E',
+                      }}
+                    >
+                      CLARIFIED
+                    </span>
+                  </div>
                 ) : (
                   <img
                     src={activeUrl}
@@ -326,6 +432,67 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
                 ))}
               </div>
             </motion.div>
+
+            {canCompareSplit && (
+              <div
+                className="mb-2 px-2.5 py-1.5 flex flex-wrap items-center justify-center gap-1.5"
+                style={{
+                  backgroundColor: 'var(--ui-card)',
+                  color: 'var(--ui-text)',
+                  border: '2.5px solid var(--ink)',
+                  boxShadow: '3px 3px 0 var(--shadow-color)',
+                }}
+              >
+                <span className="font-mono text-[10px] font-bold uppercase opacity-80">
+                  LOUPE:
+                </span>
+                {([1, 2, 4] as const).map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => {
+                      playMechanicalClick(720);
+                      setCompareZoom(z);
+                    }}
+                    className="neo-btn px-2 py-0.5 font-mono text-[10px] font-bold"
+                    style={{
+                      backgroundColor:
+                        compareZoom === z ? 'var(--clarify-accent)' : 'var(--ui-subtle)',
+                      color: compareZoom === z ? '#111111' : 'var(--ui-text)',
+                    }}
+                  >
+                    {z === 1 ? 'FIT' : `${z}X`}
+                  </button>
+                ))}
+                {compareZoom > 1 && (
+                  <>
+                    <span className="font-mono text-[10px] opacity-40">|</span>
+                    {[
+                      { origin: '50% 50%' as const, label: 'CTR' },
+                      { origin: '28% 28%' as const, label: 'TOP' },
+                      { origin: '50% 82%' as const, label: 'TEXT' },
+                    ].map((pos) => (
+                      <button
+                        key={pos.label}
+                        type="button"
+                        onClick={() => {
+                          playMechanicalClick(660);
+                          setCompareFocus(pos.origin);
+                        }}
+                        className="neo-btn px-1.5 py-0.5 font-mono text-[10px] font-bold"
+                        style={{
+                          backgroundColor:
+                            compareFocus === pos.origin ? '#FFE600' : 'var(--ui-subtle)',
+                          color: compareFocus === pos.origin ? '#111111' : 'var(--ui-text)',
+                        }}
+                      >
+                        {pos.label}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
 
             <TouchUpShelf api={brush} />
             </div>
@@ -378,11 +545,25 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
                   <div className="flex justify-between gap-2">
                     <dt className="opacity-80">TARGET MB</dt>
                     <dd className="font-bold">
-                      {receipt.cycle === 'wash'
-                        ? 'N/A (WASH ONLY)'
+                      {!receipt.enforcedTargetMB
+                        ? receipt.cycle === 'clarify'
+                          ? 'N/A (CLARIFY ONLY)'
+                          : 'N/A (WASH ONLY)'
                         : `<= ${receipt.targetMB.toFixed(2)} MB`}
                     </dd>
                   </div>
+                  {receipt.clarifyBackend && (
+                    <div className="flex justify-between gap-2">
+                      <dt className="opacity-80">ENHANCE</dt>
+                      <dd className="font-bold">
+                        {receipt.clarifyBackend === 'ai-webgpu'
+                          ? 'AI 4X (WEBGPU)'
+                          : receipt.clarifyBackend === 'ai-wasm'
+                          ? 'AI 4X (WASM)'
+                          : 'STEAM DSP'}
+                      </dd>
+                    </div>
+                  )}
                   <div className="flex justify-between gap-2">
                     <dt className="opacity-80">REDUCTION %</dt>
                     <dd className="font-bold">

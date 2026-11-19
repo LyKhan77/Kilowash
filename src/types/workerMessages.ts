@@ -1,7 +1,9 @@
+import type { ClarifyAppliedBackend, ClarifyEngineMode } from './laundry';
+
 /**
  * Message protocol between the main UI thread and src/workers/mediaWorker.ts.
- * Heavy compute (RMBG-1.4 inference, Sobel fallback, GIF quantization) lives in the worker
- * so the drum rotation, 3D operator and Web Audio loops stay at 60 FPS.
+ * Heavy compute (RMBG-1.4, Swin2SR 2x, Steam DSP, Sobel fallback, GIF/PNG quantization)
+ * lives in the worker so the drum rotation, 3D operator and Web Audio loops stay at 60 FPS.
  */
 
 export type SegmentationBackend = 'webgpu' | 'wasm' | 'offline';
@@ -13,6 +15,15 @@ export interface SegmentJob {
   bitmap: ImageBitmap;
   /** Previous frame's smoothed mask for temporal alpha smoothing (transferred). */
   prevMask: Float32Array | null;
+}
+
+export interface ClarifyJob {
+  type: 'CLARIFY';
+  id: number;
+  /** Transferred zero-copy; the worker owns and closes it. */
+  bitmap: ImageBitmap;
+  mode: ClarifyEngineMode;
+  preferMobileSafe: boolean;
 }
 
 export interface GifJob {
@@ -37,10 +48,11 @@ export interface PngJob {
   colorBudgets: number[];
 }
 
-export type WorkerRequest = SegmentJob | GifJob | PngJob;
+export type WorkerRequest = SegmentJob | ClarifyJob | GifJob | PngJob;
 
 export type WorkerResponse =
   | { type: 'MODEL_PROGRESS'; id: number; percent: number; label: string }
+  | { type: 'CLARIFY_PROGRESS'; id: number; percent: number; label: string }
   | { type: 'GIF_PROGRESS'; id: number; step: number; total: number; label: string }
   | { type: 'PNG_PROGRESS'; id: number; step: number; total: number }
   | {
@@ -50,6 +62,13 @@ export type WorkerResponse =
       mask: Float32Array;
       usedFallback: boolean;
       backend: SegmentationBackend;
+    }
+  | {
+      type: 'CLARIFY_DONE';
+      id: number;
+      bitmap: ImageBitmap;
+      backend: ClarifyAppliedBackend;
+      scaleFactor: number;
     }
   | { type: 'GIF_DONE'; id: number; blob: Blob; width: number; height: number }
   | { type: 'PNG_DONE'; id: number; blob: Blob; width: number; height: number }

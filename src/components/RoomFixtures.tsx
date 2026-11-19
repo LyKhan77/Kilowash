@@ -1,7 +1,9 @@
 import React, { useRef } from 'react';
-import { Film, Image as ImageIcon, Upload, Droplets, Gauge, Wrench } from 'lucide-react';
+import { Film, Image as ImageIcon, Upload, Droplets, Gauge, Sparkles, Wrench } from 'lucide-react';
 import { playMechanicalClick } from '../utils/laundrySfx';
 import type {
+  ClarifyEngineMode,
+  ClarifyOptions,
   ImageOutputFormat,
   LaundryCycle,
   LoadedMedia,
@@ -15,6 +17,7 @@ interface LaundryBasketFixtureProps {
   onFileSelected: (file: File) => void;
   onLoadSampleImage: () => void;
   onLoadSampleVideo: () => void;
+  onLoadSampleBlurryImage: () => void;
 }
 
 /**
@@ -28,6 +31,7 @@ export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
   onFileSelected,
   onLoadSampleImage,
   onLoadSampleVideo,
+  onLoadSampleBlurryImage,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,34 +50,49 @@ export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
       />
 
       {/* Sample Garment Tags sticking out of the top of the basket */}
-      <div className="flex items-end gap-1.5 px-2 -mb-1 relative z-10">
+      <div className="flex items-end gap-1 px-1.5 -mb-1 relative z-10">
         <button
           type="button"
           disabled={isProcessing || isGeneratingSample}
           onClick={onLoadSampleImage}
-          className="neo-btn px-2 py-1.5 font-mono text-[10px] font-bold uppercase flex items-center gap-1 -rotate-2"
+          className="neo-btn px-1.5 py-1.5 font-mono text-[9px] font-bold uppercase flex items-center gap-1 -rotate-2 whitespace-nowrap"
           style={{
             backgroundColor: '#FFE600',
             color: '#111111',
           }}
           title="Load sample meme image"
         >
-          <ImageIcon size={11} />
+          <ImageIcon size={10} />
           MEME IMG
         </button>
 
         <button
           type="button"
           disabled={isProcessing || isGeneratingSample}
+          onClick={onLoadSampleBlurryImage}
+          className="neo-btn px-1.5 py-1.5 font-mono text-[9px] font-bold uppercase flex items-center gap-1 rotate-1 whitespace-nowrap"
+          style={{
+            backgroundColor: '#22C55E',
+            color: '#111111',
+          }}
+          title="Load low-res blurry JPEG sample to test Clarify 4x"
+        >
+          <Sparkles size={10} />
+          BLUR
+        </button>
+
+        <button
+          type="button"
+          disabled={isProcessing || isGeneratingSample}
           onClick={onLoadSampleVideo}
-          className="neo-btn px-2 py-1.5 font-mono text-[10px] font-bold uppercase flex items-center gap-1 rotate-2"
+          className="neo-btn px-1.5 py-1.5 font-mono text-[9px] font-bold uppercase flex items-center gap-1 rotate-2 whitespace-nowrap"
           style={{
             backgroundColor: '#00E5FF',
             color: '#111111',
           }}
           title="Load sample meme video"
         >
-          <Film size={11} />
+          <Film size={10} />
           {isGeneratingSample ? 'WAIT...' : 'MEME VID'}
         </button>
       </div>
@@ -152,6 +171,8 @@ interface WallDispenserRackFixtureProps {
   media: LoadedMedia | null;
   cycle: LaundryCycle;
   onChangeCycle: (c: LaundryCycle) => void;
+  clarify: ClarifyOptions;
+  onChangeClarify: (next: ClarifyOptions) => void;
   targetMB: number;
   onChangeTargetMB: (mb: number) => void;
   imageFormat: ImageOutputFormat;
@@ -171,6 +192,8 @@ export const WallDispenserRackFixture: React.FC<WallDispenserRackFixtureProps> =
   media,
   cycle,
   onChangeCycle,
+  clarify,
+  onChangeClarify,
   targetMB,
   onChangeTargetMB,
   imageFormat,
@@ -179,7 +202,9 @@ export const WallDispenserRackFixture: React.FC<WallDispenserRackFixtureProps> =
   onChangeVideoFormat,
   isProcessing,
 }) => {
-  const spinEnabled = cycle === 'spin' || cycle === 'both';
+  const isVideo = media?.kind === 'video';
+  const spinEnabled =
+    cycle === 'spin' || cycle === 'both' || (cycle === 'clarify' && clarify.withSpin);
   const activeKind = media?.kind ?? 'image';
 
   return (
@@ -206,25 +231,35 @@ export const WallDispenserRackFixture: React.FC<WallDispenserRackFixtureProps> =
           <Droplets size={14} className="text-adaptive" />
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
             {
               id: 'wash' as const,
               title: 'WASH',
               sub: 'BG AI',
               color: 'var(--wash-accent)',
+              disabled: false,
             },
             {
               id: 'spin' as const,
               title: 'SPIN',
               sub: 'MB',
               color: 'var(--spin-accent)',
+              disabled: false,
             },
             {
               id: 'both' as const,
               title: 'BOTH',
               sub: 'FULL',
               color: 'var(--both-accent)',
+              disabled: false,
+            },
+            {
+              id: 'clarify' as const,
+              title: 'CLARIFY',
+              sub: isVideo ? 'IMG ONLY' : 'HD 4X',
+              color: 'var(--clarify-accent)',
+              disabled: isVideo,
             },
           ].map((pod) => {
             const active = cycle === pod.id;
@@ -232,12 +267,17 @@ export const WallDispenserRackFixture: React.FC<WallDispenserRackFixtureProps> =
               <button
                 key={pod.id}
                 type="button"
-                disabled={isProcessing}
+                disabled={isProcessing || pod.disabled}
                 onClick={() => {
                   playMechanicalClick(740);
                   onChangeCycle(pod.id);
                 }}
-                className="neo-btn p-2 flex flex-col items-center text-center relative"
+                title={
+                  pod.disabled
+                    ? 'Clarify enhancement currently supports images only'
+                    : undefined
+                }
+                className="neo-btn p-2 flex flex-col items-center text-center relative disabled:opacity-45 disabled:cursor-not-allowed"
                 style={{
                   backgroundColor: active ? pod.color : 'var(--ui-subtle)',
                   color: active ? '#111111' : 'var(--ui-text)',
@@ -256,6 +296,71 @@ export const WallDispenserRackFixture: React.FC<WallDispenserRackFixtureProps> =
             );
           })}
         </div>
+
+        {cycle === 'clarify' && (
+          <div
+            className="mt-2.5 pt-2.5 border-t-2 border-dashed flex flex-col gap-2"
+            style={{ borderColor: 'var(--ink)' }}
+          >
+            <div className="grid grid-cols-3 gap-1">
+              {(['auto', 'steam', 'ai'] as ClarifyEngineMode[]).map((m) => {
+                const selected = clarify.mode === m;
+                const label = m === 'ai' ? 'AI 4X' : m.toUpperCase();
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => {
+                      playMechanicalClick(720);
+                      onChangeClarify({ ...clarify, mode: m });
+                    }}
+                    className="neo-btn py-1 font-mono text-[10px] font-bold uppercase"
+                    style={{
+                      backgroundColor: selected ? 'var(--clarify-accent)' : 'var(--ui-subtle)',
+                      color: selected ? '#111111' : 'var(--ui-text)',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => {
+                  playMechanicalClick(680);
+                  onChangeClarify({ ...clarify, withWash: !clarify.withWash });
+                }}
+                className="neo-btn py-1 px-1.5 font-mono text-[10px] font-bold uppercase"
+                style={{
+                  backgroundColor: clarify.withWash ? 'var(--wash-accent)' : 'var(--ui-subtle)',
+                  color: clarify.withWash ? '#111111' : 'var(--ui-text)',
+                }}
+              >
+                {clarify.withWash ? '[✓] + BG AI' : '[ ] + BG AI'}
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => {
+                  playMechanicalClick(680);
+                  onChangeClarify({ ...clarify, withSpin: !clarify.withSpin });
+                }}
+                className="neo-btn py-1 px-1.5 font-mono text-[10px] font-bold uppercase"
+                style={{
+                  backgroundColor: clarify.withSpin ? 'var(--spin-accent)' : 'var(--ui-subtle)',
+                  color: clarify.withSpin ? '#111111' : 'var(--ui-text)',
+                }}
+              >
+                {clarify.withSpin ? '[✓] + TARGET MB' : '[ ] + TARGET MB'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* UNIT 02: DIGITAL WEIGHT SCALE (TARGET IN MB) */}

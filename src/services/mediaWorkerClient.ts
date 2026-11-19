@@ -1,3 +1,4 @@
+import type { ClarifyAppliedBackend, ClarifyEngineMode } from '../types/laundry';
 import type { WorkerRequest, WorkerResponse } from '../types/workerMessages';
 
 /**
@@ -9,6 +10,7 @@ import type { WorkerRequest, WorkerResponse } from '../types/workerMessages';
 
 interface JobHandlers {
   onModelProgress?: (percent: number, label: string) => void;
+  onClarifyProgress?: (percent: number, label: string) => void;
   onGifProgress?: (step: number, total: number, label: string) => void;
 }
 
@@ -23,6 +25,12 @@ export interface SegmentationResult {
   bitmap: ImageBitmap;
   mask: Float32Array;
   usedFallback: boolean;
+}
+
+export interface ClarifyWorkerResult {
+  bitmap: ImageBitmap;
+  backend: ClarifyAppliedBackend;
+  scaleFactor: number;
 }
 
 export interface GifEncodingOptions {
@@ -80,6 +88,10 @@ function handleMessage(message: WorkerResponse): void {
       job.handlers.onModelProgress?.(message.percent, message.label);
       job.silenceTimer = armSilenceTimer();
       return;
+    case 'CLARIFY_PROGRESS':
+      job.handlers.onClarifyProgress?.(message.percent, message.label);
+      job.silenceTimer = armSilenceTimer();
+      return;
     case 'GIF_PROGRESS':
       job.handlers.onGifProgress?.(message.step, message.total, message.label);
       job.silenceTimer = armSilenceTimer();
@@ -92,6 +104,7 @@ function handleMessage(message: WorkerResponse): void {
       job.reject(new Error(message.message));
       return;
     case 'SEGMENT_DONE':
+    case 'CLARIFY_DONE':
     case 'GIF_DONE':
     case 'PNG_DONE':
       pending.delete(message.id);
@@ -224,4 +237,38 @@ export async function encodeGifInWorker(
   }
 
   return { blob: message.blob, width: message.width, height: message.height };
+}
+
+/**
+ * Enhances an image on the worker thread using tiled Swin2SR 2x or Steam DSP.
+ * The bitmap is transferred zero-copy, so callers must not reuse it afterwards.
+ */
+export async function clarifyInWorker(
+  bitmap: ImageBitmap,
+  mode: ClarifyEngineMode,
+  preferMobileSafe: boolean,
+  onClarifyProgress?: (percent: number, label: string) => void
+): Promise<ClarifyWorkerResult> {
+  const id = nextJobId++;
+  const message = await request(
+    {
+      type: 'CLARIFY',
+      id,
+      bitmap,
+      mode,
+      preferMobileSafe,
+    },
+    [bitmap],
+    { onClarifyProgress }
+  );
+
+  if (message.type !== 'CLARIFY_DONE') {
+    throw new Error('Unexpected response from the media worker.');
+  }
+
+  return {
+    bitmap: message.bitmap,
+    backend: message.backend,
+    scaleFactor: message.scaleFactor,
+  };
 }

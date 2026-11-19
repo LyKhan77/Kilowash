@@ -16,6 +16,7 @@ const CYCLE_HEX: Record<LaundryCycle, number> = {
   wash: 0x00e5ff,
   spin: 0xff5416,
   both: 0xffe600,
+  clarify: 0x22c55e,
 };
 
 const STATE_LABEL: Record<VoxelOperatorState, string> = {

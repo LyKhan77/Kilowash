@@ -261,3 +261,68 @@ test('encodes sample meme video to animated GIF under Target-MB in the worker', 
   expect(gifOutput!.magic).toEqual([71, 73, 70, 56]); // "GIF8"
   expect(gifOutput!.finalSizeMB).toBeLessThanOrEqual(gifOutput!.targetMB + 0.01);
 });
+
+/**
+ * Clarify (Image Enhancement): runs Steam DSP + Target MB, checks Care Tag ENHANCE row,
+ * Scene 2 Before/After Compare Slider, and strict Target-MB compliance.
+ */
+test('clarifies a sample image with Steam DSP + Target MB and renders compare slider', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'MEME IMG' }).click();
+  await expect(page.getByRole('button', { name: 'START', exact: true })).toBeEnabled({
+    timeout: 30_000,
+  });
+
+  await page.getByRole('button', { name: /CLARIFY/ }).click();
+  await page.getByRole('button', { name: 'STEAM', exact: true }).click();
+  await page.getByRole('button', { name: /\+ TARGET MB/ }).click();
+  await page.getByRole('button', { name: '0.2MB' }).click();
+  await page.getByRole('button', { name: '-', exact: true }).click();
+  await expect(page.getByText('CLARIFY // STEAM <= 0.05MB')).toBeVisible();
+
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+  await expect(page.getByText('CARE TAG // RECEIPT')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('STEAM DSP')).toBeVisible();
+  await expect(
+    page.getByRole('slider', { name: 'Before and after clarify comparison' })
+  ).toBeVisible();
+  await page.getByRole('button', { name: '2X', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'TEXT', exact: true })).toBeVisible();
+
+  const finalSizeMB = await page.evaluate(() => {
+    const text = document.body.innerText;
+    return Number((text.match(/FINAL SIZE\n([\d.]+) MB/) ?? [])[1]);
+  });
+  expect(finalSizeMB).toBeGreaterThan(0);
+  expect(finalSizeMB).toBeLessThanOrEqual(0.06);
+});
+
+/**
+ * Offline / blocked-model resilience for Clarify AI 4X: must fall back cleanly to Steam DSP
+ * inside the worker without failing the laundry cycle.
+ */
+test('falls back to Steam DSP when Clarify AI 4X model hosts are unreachable', async ({
+  page,
+}) => {
+  await page.route(/huggingface\.co|hf\.co|cdn\.jsdelivr\.net/, (route) => route.abort());
+
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'MEME IMG' }).click();
+  await expect(page.getByRole('button', { name: 'START', exact: true })).toBeEnabled({
+    timeout: 30_000,
+  });
+
+  await page.getByRole('button', { name: /CLARIFY/ }).click();
+  await page.getByRole('button', { name: 'AI 4X', exact: true }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+
+  await expect(page.getByText('CARE TAG // RECEIPT')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('STEAM DSP')).toBeVisible();
+  await expect(
+    page.getByRole('slider', { name: 'Before and after clarify comparison' })
+  ).toBeVisible();
+});

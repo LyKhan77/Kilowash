@@ -1,4 +1,6 @@
 import type {
+  ClarifyAppliedBackend,
+  ClarifyOptions,
   CropBox,
   ImageOutputFormat,
   LaundryCycle,
@@ -8,6 +10,7 @@ import type {
   WashProgress,
 } from '../types/laundry';
 import { removeBackgroundFromCanvas } from './aiBackgroundRemover';
+import { clarifyCanvas } from './imageClarifier';
 import { encodeGifInWorker, encodePngInWorker } from './mediaWorkerClient';
 
 const MAX_WORKING_VIDEO_DIM = 640;
@@ -280,13 +283,20 @@ export async function processImageLaundry(params: {
   file: File;
   objectUrl: string;
   cycle: LaundryCycle;
+  clarify?: ClarifyOptions;
   crop: CropBox;
   targetMB: number;
   outputFormat: ImageOutputFormat;
   onProgress: (p: WashProgress) => void;
 }): Promise<LaundryReceipt> {
-  const { file, objectUrl, cycle, crop, targetMB, outputFormat, onProgress } = params;
+  const { file, objectUrl, cycle, clarify, crop, targetMB, outputFormat, onProgress } = params;
   const startedAt = performance.now();
+
+  const runClarify = cycle === 'clarify';
+  const runWash =
+    cycle === 'wash' || cycle === 'both' || (runClarify && Boolean(clarify?.withWash));
+  const runSpin =
+    cycle === 'spin' || cycle === 'both' || (runClarify && Boolean(clarify?.withSpin));
 
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
@@ -298,152 +308,205 @@ export async function processImageLaundry(params: {
   let workingCanvas = cropSourceToCanvas(img, img.naturalWidth, img.naturalHeight, crop);
   const inputPreviewUrl = previewDataUrl(workingCanvas);
 
-  // Stage 1: Locking Door & Filling Water
-  await runTheatricalStage({
-    phase: 'filling',
-    fromPct: 2,
-    toPct: 22,
-    durationMs: 1000,
-    statusText: '01 // LOCKING DOOR & FILLING WATER...',
-    previewDataUrl: inputPreviewUrl,
-    onProgress,
-  });
+  let beforeUrl: string | undefined;
+  if (runClarify) {
+    const beforeBlob = await canvasToBlob(workingCanvas, 'image/png');
+    beforeUrl = URL.createObjectURL(beforeBlob);
+  }
 
-  if (cycle === 'wash' || cycle === 'both') {
-    let modelIsDownloading = false;
-
-    const aiPromise = removeBackgroundFromCanvas(workingCanvas, (modelPct, label) => {
-      modelIsDownloading = modelPct < 100;
-      onProgress({
-        phase: 'loading-model',
-        percent: Math.min(54, 24 + Math.round(modelPct * 0.3)),
-        statusText: label ?? 'LOADING RMBG-1.4 AI...',
-        previewDataUrl: inputPreviewUrl,
-      });
-    }).then((res) => {
-      modelIsDownloading = false;
-      return res;
-    });
-
-    // Stage 2: Deep Scrub & AI Stain Removal (runs concurrently with inference)
-    const scrubAnimPromise = runTheatricalStage({
-      phase: 'washing',
-      fromPct: 22,
-      toPct: 58,
-      durationMs: 1850,
-      statusText: '02 // DEEP SCRUB & AI STAIN REMOVAL...',
+  try {
+    // Stage 1: Locking Door & Filling Water
+    await runTheatricalStage({
+      phase: 'filling',
+      fromPct: 2,
+      toPct: 18,
+      durationMs: 900,
+      statusText: '01 // LOCKING DOOR & FILLING WATER...',
       previewDataUrl: inputPreviewUrl,
       onProgress,
-      pauseWhen: () => modelIsDownloading,
     });
 
-    const [washed] = await Promise.all([aiPromise, scrubAnimPromise]);
-    workingCanvas = washed.canvas;
-    const cutoutPreviewUrl = previewDataUrl(workingCanvas);
+    let clarifyBackend: ClarifyAppliedBackend | undefined;
+    if (runClarify) {
+      let modelLoading = false;
+      const clarifyMode = clarify?.mode ?? 'auto';
 
-    // Stage 3: Rinsing & Draining Dirty Background
-    await runTheatricalStage({
-      phase: 'rinsing',
-      fromPct: 58,
-      toPct: 76,
-      durationMs: 1100,
-      statusText: washed.usedFallback
-        ? '03 // RINSING DIRTY BG (OFFLINE FALLBACK)...'
-        : '03 // RINSING & DRAINING DIRTY BG...',
-      previewDataUrl: cutoutPreviewUrl,
-      onProgress,
+      const clarifyPromise = clarifyCanvas(workingCanvas, clarifyMode, (pct, label) => {
+        modelLoading = pct < 42;
+        onProgress({
+          phase: 'clarifying',
+          percent: Math.min(48, 18 + Math.round(pct * 0.3)),
+          statusText: label ?? 'CLARIFYING IMAGE FIBERS...',
+          previewDataUrl: inputPreviewUrl,
+        });
+      }).then((res) => {
+        modelLoading = false;
+        return res;
+      });
+
+      const clarifyAnim = runTheatricalStage({
+        phase: 'clarifying',
+        fromPct: 18,
+        toPct: 48,
+        durationMs: 1300,
+        statusText: '02 // STEAM PRESS & SUPER-RES CLARIFY...',
+        previewDataUrl: inputPreviewUrl,
+        onProgress,
+        pauseWhen: () => modelLoading,
+      });
+
+      const [clarified] = await Promise.all([clarifyPromise, clarifyAnim]);
+      workingCanvas = clarified.canvas;
+      clarifyBackend = clarified.backend;
+    }
+
+    const afterClarifyPreviewUrl = previewDataUrl(workingCanvas);
+
+    if (runWash) {
+      let modelIsDownloading = false;
+      const washStartPct = runClarify ? 48 : 22;
+      const washEndPct = runClarify ? 72 : 58;
+
+      const aiPromise = removeBackgroundFromCanvas(workingCanvas, (modelPct, label) => {
+        modelIsDownloading = modelPct < 100;
+        onProgress({
+          phase: 'loading-model',
+          percent: Math.min(washEndPct - 2, washStartPct + Math.round(modelPct * 0.22)),
+          statusText: label ?? 'LOADING RMBG-1.4 AI...',
+          previewDataUrl: afterClarifyPreviewUrl,
+        });
+      }).then((res) => {
+        modelIsDownloading = false;
+        return res;
+      });
+
+      // Stage 2: Deep Scrub & AI Stain Removal (runs concurrently with inference)
+      const scrubAnimPromise = runTheatricalStage({
+        phase: 'washing',
+        fromPct: washStartPct,
+        toPct: washEndPct,
+        durationMs: 1650,
+        statusText: '02 // DEEP SCRUB & AI STAIN REMOVAL...',
+        previewDataUrl: afterClarifyPreviewUrl,
+        onProgress,
+        pauseWhen: () => modelIsDownloading,
+      });
+
+      const [washed] = await Promise.all([aiPromise, scrubAnimPromise]);
+      workingCanvas = washed.canvas;
+      const cutoutPreviewUrl = previewDataUrl(workingCanvas);
+
+      // Stage 3: Rinsing & Draining Dirty Background
+      await runTheatricalStage({
+        phase: 'rinsing',
+        fromPct: washEndPct,
+        toPct: 78,
+        durationMs: 950,
+        statusText: washed.usedFallback
+          ? '03 // RINSING DIRTY BG (OFFLINE FALLBACK)...'
+          : '03 // RINSING & DRAINING DIRTY BG...',
+        previewDataUrl: cutoutPreviewUrl,
+        onProgress,
+      });
+    }
+
+    const currentPreviewUrl = previewDataUrl(workingCanvas);
+    let finalBlob: Blob;
+    let finalWidth = workingCanvas.width;
+    let finalHeight = workingCanvas.height;
+
+    if (runSpin) {
+      const spinStartPct = runWash ? 78 : runClarify ? 48 : 22;
+      const compressPromise = compressCanvasToTargetMB(
+        workingCanvas,
+        outputFormat,
+        targetMB,
+        () => {
+          /* progress handled smoothly by theatrical spin stage */
+        }
+      );
+
+      const spinAnimPromise = runTheatricalStage({
+        phase: 'spinning',
+        fromPct: spinStartPct,
+        toPct: 96,
+        durationMs: runWash ? 1150 : 1850,
+        statusText: `04 // HIGH-SPEED SPIN & MB PRESS (<= ${targetMB.toFixed(2)} MB)...`,
+        previewDataUrl: currentPreviewUrl,
+        onProgress,
+      });
+
+      const [compressed] = await Promise.all([compressPromise, spinAnimPromise]);
+      finalBlob = compressed.blob;
+      finalWidth = compressed.width;
+      finalHeight = compressed.height;
+    } else {
+      const encodePromise = encodeCanvasDirect(workingCanvas, outputFormat);
+      const drainSpinPromise = runTheatricalStage({
+        phase: 'spinning',
+        fromPct: runWash ? 78 : 50,
+        toPct: 96,
+        durationMs: 900,
+        statusText: `04 // DRAIN SPIN & ENCODING ${outputFormat.toUpperCase()}...`,
+        previewDataUrl: currentPreviewUrl,
+        onProgress,
+      });
+
+      const [encoded] = await Promise.all([encodePromise, drainSpinPromise]);
+      finalBlob = encoded.blob;
+      finalWidth = encoded.width;
+      finalHeight = encoded.height;
+    }
+
+    onProgress({
+      phase: 'done',
+      percent: 100,
+      statusText: '05 // CYCLE COMPLETE — HANGING TO DRY',
+      previewDataUrl: currentPreviewUrl,
+      currentSizeMB: bytesToMB(finalBlob.size),
     });
-  }
+    await sleep(320);
 
-  const currentPreviewUrl = previewDataUrl(workingCanvas);
-  let finalBlob: Blob;
-  let finalWidth = workingCanvas.width;
-  let finalHeight = workingCanvas.height;
+    const originalSizeMB = bytesToMB(file.size);
+    const finalSizeMB = bytesToMB(finalBlob.size);
+    const savedPercent =
+      originalSizeMB > 0
+        ? Math.round(((originalSizeMB - finalSizeMB) / originalSizeMB) * 100)
+        : 0;
 
-  if (cycle === 'spin' || cycle === 'both') {
-    const spinStartPct = cycle === 'spin' ? 22 : 76;
-    const compressPromise = compressCanvasToTargetMB(
-      workingCanvas,
-      outputFormat,
+    const formatLabelMap: Record<ImageOutputFormat, string> = {
+      webp: runWash ? 'WebP Transparent' : runClarify ? 'WebP Clarified' : 'WebP Solid',
+      png: runWash ? 'PNG Transparent' : runClarify ? 'PNG Clarified' : 'PNG Lossless',
+      jpeg: runClarify ? 'JPG Clarified' : 'JPG Solid',
+    };
+
+    const receipt: LaundryReceipt = {
+      fileName: file.name,
+      mediaKind: 'image',
+      cycle,
+      hasTransparency: runWash && outputFormat !== 'jpeg',
+      enforcedTargetMB: runSpin,
+      clarifyBackend,
+      beforeUrl,
+      originalSizeMB,
+      finalSizeMB,
       targetMB,
-      () => {
-        /* progress handled smoothly by theatrical spin stage */
-      }
-    );
+      savedPercent,
+      width: finalWidth,
+      height: finalHeight,
+      formatLabel: formatLabelMap[outputFormat],
+      fileExtension: outputFormat === 'jpeg' ? 'jpg' : outputFormat,
+      durationMs: Math.round(performance.now() - startedAt),
+      frameCount: 1,
+      outputUrl: URL.createObjectURL(finalBlob),
+      outputBlob: finalBlob,
+    };
 
-    const spinAnimPromise = runTheatricalStage({
-      phase: 'spinning',
-      fromPct: spinStartPct,
-      toPct: 96,
-      durationMs: cycle === 'spin' ? 2200 : 1150,
-      statusText: `04 // HIGH-SPEED SPIN & MB PRESS (<= ${targetMB.toFixed(2)} MB)...`,
-      previewDataUrl: currentPreviewUrl,
-      onProgress,
-    });
-
-    const [compressed] = await Promise.all([compressPromise, spinAnimPromise]);
-    finalBlob = compressed.blob;
-    finalWidth = compressed.width;
-    finalHeight = compressed.height;
-  } else {
-    const encodePromise = encodeCanvasDirect(workingCanvas, outputFormat);
-    const drainSpinPromise = runTheatricalStage({
-      phase: 'spinning',
-      fromPct: 76,
-      toPct: 96,
-      durationMs: 950,
-      statusText: `04 // DRAIN SPIN & ENCODING ${outputFormat.toUpperCase()}...`,
-      previewDataUrl: currentPreviewUrl,
-      onProgress,
-    });
-
-    const [encoded] = await Promise.all([encodePromise, drainSpinPromise]);
-    finalBlob = encoded.blob;
-    finalWidth = encoded.width;
-    finalHeight = encoded.height;
+    return receipt;
+  } catch (err) {
+    if (beforeUrl) URL.revokeObjectURL(beforeUrl);
+    throw err;
   }
-
-  onProgress({
-    phase: 'done',
-    percent: 100,
-    statusText: '05 // CYCLE COMPLETE — HANGING TO DRY',
-    previewDataUrl: currentPreviewUrl,
-    currentSizeMB: bytesToMB(finalBlob.size),
-  });
-  await sleep(320);
-
-  const originalSizeMB = bytesToMB(file.size);
-  const finalSizeMB = bytesToMB(finalBlob.size);
-  const savedPercent =
-    originalSizeMB > 0
-      ? Math.round(((originalSizeMB - finalSizeMB) / originalSizeMB) * 100)
-      : 0;
-
-  const formatLabelMap: Record<ImageOutputFormat, string> = {
-    webp: 'WebP Transparent',
-    png: 'PNG Transparent',
-    jpeg: 'JPG Solid',
-  };
-
-  const receipt: LaundryReceipt = {
-    fileName: file.name,
-    mediaKind: 'image',
-    cycle,
-    originalSizeMB,
-    finalSizeMB,
-    targetMB,
-    savedPercent,
-    width: finalWidth,
-    height: finalHeight,
-    formatLabel: formatLabelMap[outputFormat],
-    fileExtension: outputFormat === 'jpeg' ? 'jpg' : outputFormat,
-    durationMs: Math.round(performance.now() - startedAt),
-    frameCount: 1,
-    outputUrl: URL.createObjectURL(finalBlob),
-    outputBlob: finalBlob,
-  };
-
-  return receipt;
 }
 
 interface BrowserImageDecoder {
@@ -810,6 +873,8 @@ export async function processVideoLaundry(params: {
     fileName: file.name,
     mediaKind: 'video',
     cycle,
+    hasTransparency: cycle === 'wash' || cycle === 'both',
+    enforcedTargetMB: enforceTarget,
     originalSizeMB,
     finalSizeMB,
     targetMB,

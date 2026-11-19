@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, UploadCloud, X, Loader2 } from 'lucide-react';
 import type {
+  ClarifyOptions,
   CropBox,
   ImageOutputFormat,
   LaundryCycle,
@@ -17,6 +18,7 @@ interface LaundryMachineProps {
   shift: ThemeShift;
   media: LoadedMedia | null;
   cycle: LaundryCycle;
+  clarify: ClarifyOptions;
   onCycleClick: () => void;
   onStartCycle: () => void;
   targetMB: number;
@@ -35,6 +37,7 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
   shift,
   media,
   cycle,
+  clarify,
   onCycleClick,
   onStartCycle,
   targetMB,
@@ -57,18 +60,21 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
   const isFilling = progress.phase === 'filling';
   const isWashing =
     progress.phase === 'washing' ||
+    progress.phase === 'clarifying' ||
     progress.phase === 'loading-model' ||
     progress.phase === 'extracting';
   const isRinsing = progress.phase === 'rinsing';
   const isSpinPhase =
     isProcessing && (progress.phase === 'spinning' || progress.phase === 'encoding');
   const isFastCentrifuge =
-    isSpinPhase && (cycle === 'spin' || cycle === 'both');
+    isSpinPhase &&
+    (cycle === 'spin' || cycle === 'both' || (cycle === 'clarify' && clarify.withSpin));
 
   const dialAngles: Record<LaundryCycle, number> = {
-    wash: -38,
-    spin: 0,
-    both: 38,
+    wash: -52,
+    spin: -18,
+    both: 18,
+    clarify: 52,
   };
 
   const activeFormat =
@@ -77,6 +83,10 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
     ? `IDLE // LOAD MEDIA (${cycle.toUpperCase()})`
     : cycle === 'wash'
     ? `WASH // RMBG-1.4 AI (${activeFormat})`
+    : cycle === 'clarify'
+    ? `CLARIFY // ${clarify.mode === 'ai' ? 'AI 4X' : clarify.mode.toUpperCase()}${
+        clarify.withWash ? '+BG' : ''
+      }${clarify.withSpin ? ` <= ${targetMB.toFixed(2)}MB` : ` (${activeFormat})`}`
     : `TARGET: ${targetMB.toFixed(2)} MB | ${activeFormat}`;
 
   const doorOpenAngle =
@@ -165,6 +175,7 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
                   { id: 'wash' as const, color: 'var(--wash-accent)' },
                   { id: 'spin' as const, color: 'var(--spin-accent)' },
                   { id: 'both' as const, color: 'var(--both-accent)' },
+                  { id: 'clarify' as const, color: 'var(--clarify-accent)' },
                 ].map((lamp) => {
                   const isOn = cycle === lamp.id;
                   return (
@@ -209,7 +220,7 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
                 type="button"
                 disabled={isProcessing}
                 onClick={onCycleClick}
-                title="Click to rotate program: Wash / Spin / Both"
+                title="Click to rotate program: Wash / Spin / Both / Clarify"
                 className="w-10 h-10 rounded-full relative cursor-pointer disabled:cursor-not-allowed shrink-0"
                 style={{
                   backgroundColor: 'var(--ui-card)',
