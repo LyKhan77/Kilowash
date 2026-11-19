@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Film, Image as ImageIcon, Upload, Droplets, Gauge, Sparkles, Wrench } from 'lucide-react';
+import { Film, Image as ImageIcon, Upload, Droplets, Gauge, Sparkles, Wrench, X } from 'lucide-react';
 import { playMechanicalClick } from '../utils/laundrySfx';
 import type {
   ClarifyEngineMode,
@@ -12,9 +12,13 @@ import type {
 
 interface LaundryBasketFixtureProps {
   media: LoadedMedia | null;
+  queue: LoadedMedia[];
+  activeQueueIndex: number;
   isProcessing: boolean;
   isGeneratingSample: boolean;
-  onFileSelected: (file: File) => void;
+  onFilesSelected: (files: File[]) => void;
+  onSelectQueueItem: (index: number) => void;
+  onRemoveQueueItem: (index: number) => void;
   onLoadSampleImage: () => void;
   onLoadSampleVideo: () => void;
   onLoadSampleBlurryImage: () => void;
@@ -22,13 +26,17 @@ interface LaundryBasketFixtureProps {
 
 /**
  * Diegetic Dirty Laundry Basket sitting on the left floor of the Laundromat room.
- * Holds uploaded files & pulls out sample meme garments.
+ * Holds single or multi-image batch loads & pulls out sample meme garments.
  */
 export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
   media,
+  queue,
+  activeQueueIndex,
   isProcessing,
   isGeneratingSample,
-  onFileSelected,
+  onFilesSelected,
+  onSelectQueueItem,
+  onRemoveQueueItem,
   onLoadSampleImage,
   onLoadSampleVideo,
   onLoadSampleBlurryImage,
@@ -40,11 +48,12 @@ export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
       <input
         ref={inputRef}
         type="file"
+        multiple
         accept="image/*,video/*"
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFileSelected(file);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) onFilesSelected(files);
           e.target.value = '';
         }}
       />
@@ -140,10 +149,66 @@ export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
           }}
         >
           <Upload size={14} />
-          {media ? 'CHANGE LOAD' : 'LOAD BASKET'}
+          {queue.length > 1
+            ? `BATCH (${queue.length}/12)`
+            : media
+            ? 'CHANGE LOAD'
+            : 'LOAD BASKET'}
         </button>
 
-        {media ? (
+        {queue.length > 1 ? (
+          <div
+            className="mt-2 p-1.5 border-2 font-mono text-[10px] leading-tight flex flex-col gap-1 max-h-[112px] overflow-y-auto"
+            style={{
+              borderColor: 'var(--ink)',
+              backgroundColor: 'var(--ui-card)',
+              color: 'var(--ui-text)',
+            }}
+          >
+            <div className="font-bold uppercase text-[9px] opacity-75">
+              BULK QUEUE ({queue.length} IMAGES)
+            </div>
+            {queue.map((item, idx) => {
+              const active = idx === activeQueueIndex;
+              return (
+                <div
+                  key={`${item.file.name}-${idx}`}
+                  className="flex items-center justify-between gap-1 px-1 py-0.5 border"
+                  style={{
+                    borderColor: 'var(--ink)',
+                    backgroundColor: active ? 'var(--active-accent)' : 'var(--ui-subtle)',
+                    color: active ? '#111111' : 'var(--ui-text)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => {
+                      playMechanicalClick(660);
+                      onSelectQueueItem(idx);
+                    }}
+                    className="truncate text-left flex-1 font-bold"
+                    title={item.file.name}
+                  >
+                    {idx + 1}. {item.file.name}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    aria-label={`Remove ${item.file.name}`}
+                    onClick={() => {
+                      playMechanicalClick(560);
+                      onRemoveQueueItem(idx);
+                    }}
+                    className="shrink-0 opacity-80 hover:opacity-100 disabled:opacity-30"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : media ? (
           <div
             className="mt-2 p-1.5 border-2 font-mono text-[10px] leading-tight"
             style={{
@@ -159,7 +224,7 @@ export const LaundryBasketFixture: React.FC<LaundryBasketFixtureProps> = ({
           </div>
         ) : (
           <p className="font-mono text-[10px] mt-2 leading-snug text-adaptive opacity-90">
-            Click basket or pull a Meme tag to load media into the drum.
+            Click basket (1 or up to 12 images) or pull a Meme tag.
           </p>
         )}
       </div>

@@ -382,3 +382,62 @@ test('hanger studio bakes sticker outline, drop shadow, and white backdrop into 
   await page.getByRole('button', { name: 'RESET FX' }).click();
   await expect(page.getByText('900×900px')).toBeVisible();
 });
+
+/**
+ * Bulk Basket: uploading multiple images processes them sequentially, renders the Scene 2
+ * batch rack switcher, and exports a valid PKZIP archive containing all processed files.
+ */
+test('bulk basket processes multiple images sequentially and downloads a valid zip archive', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const [b1, b2] = await page.evaluate(() => {
+    const makePng = (color: string) => {
+      const c = document.createElement('canvas');
+      c.width = 240;
+      c.height = 240;
+      const ctx = c.getContext('2d');
+      if (!ctx) throw new Error('2D context unavailable');
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 240, 240);
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(60, 60, 120, 120);
+      return c.toDataURL('image/png').split(',')[1];
+    };
+    return [makePng('#00E5FF'), makePng('#FF5416')];
+  });
+
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: 'shirt-a.png', mimeType: 'image/png', buffer: Buffer.from(b1, 'base64') },
+    { name: 'shirt-b.png', mimeType: 'image/png', buffer: Buffer.from(b2, 'base64') },
+  ]);
+
+  await expect(page.getByText('BATCH (2/12)')).toBeVisible();
+  await expect(page.getByText('BULK QUEUE (2 IMAGES)')).toBeVisible();
+
+  await page.getByRole('button', { name: 'SPIN MB' }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+
+  await expect(page.getByText('CARE TAG // RECEIPT')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('BATCH RACK (2):')).toBeVisible();
+  await expect(page.getByText('BATCH TOTAL')).toBeVisible();
+
+  await page.getByRole('button', { name: /#2 shirt-b\.png/ }).click();
+  await expect(page.getByText('240×240px')).toBeVisible();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: /DOWNLOAD ALL \(\.ZIP • 2\)/ }).click(),
+  ]);
+
+  expect(download.suggestedFilename()).toBe('kilowash-batch-2.zip');
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const zipBytes = new Uint8Array(Buffer.concat(chunks));
+  expect(zipBytes.byteLength).toBeGreaterThan(200);
+  expect(Array.from(zipBytes.slice(0, 4))).toEqual([80, 75, 3, 4]); // PK\x03\x04
+});

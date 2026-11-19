@@ -171,6 +171,21 @@ async function inspectLoadedFile(file: File): Promise<LoadedMedia> {
   throw new Error('Please select an Image (PNG/JPG/WebP/GIF) or Video (MP4/WebM/MOV) file.');
 }
 
+const MAX_BATCH_IMAGES = 12;
+
+function revokeMediaList(items: LoadedMedia[]): void {
+  for (const item of items) {
+    URL.revokeObjectURL(item.objectUrl);
+  }
+}
+
+function revokeReceiptList(items: LaundryReceipt[]): void {
+  for (const item of items) {
+    URL.revokeObjectURL(item.outputUrl);
+    if (item.beforeUrl) URL.revokeObjectURL(item.beforeUrl);
+  }
+}
+
 export default function App() {
   const [shift, setShift] = useState<ThemeShift>('day');
   const [activeScene, setActiveScene] = useState<RoomScene>('washer');
@@ -184,16 +199,24 @@ export default function App() {
   const [imageFormat, setImageFormat] = useState<ImageOutputFormat>('webp');
   const [videoFormat, setVideoFormat] = useState<VideoOutputFormat>('gif');
 
-  const [media, setMedia] = useState<LoadedMedia | null>(null);
+  const [queue, setQueue] = useState<LoadedMedia[]>([]);
+  const [activeQueueIndex, setActiveQueueIndex] = useState<number>(0);
   const [crop, setCrop] = useState<CropBox>(DEFAULT_CROP);
   const [trim, setTrim] = useState<VideoTrim>({ start: 0, end: 5, fps: 12 });
   const [progress, setProgress] = useState<WashProgress>(IDLE_PROGRESS);
-  const [receipt, setReceipt] = useState<LaundryReceipt | null>(null);
+  const [receipts, setReceipts] = useState<LaundryReceipt[]>([]);
+  const [activeReceiptIndex, setActiveReceiptIndex] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isGeneratingSample, setIsGeneratingSample] = useState(false);
   const [sfxMuted, setSfxMutedState] = useState<boolean>(false);
 
+  const media = queue[activeQueueIndex] ?? null;
+  const receipt = receipts[activeReceiptIndex] ?? null;
   const prevPhaseRef = useRef<WashProgress['phase']>('idle');
+  const queueRef = useRef<LoadedMedia[]>([]);
+  const receiptsRef = useRef<LaundryReceipt[]>([]);
+  queueRef.current = queue;
+  receiptsRef.current = receipts;
 
   const isProcessing =
     progress.phase !== 'idle' && progress.phase !== 'done' && progress.phase !== 'error';
@@ -234,70 +257,118 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      if (media?.objectUrl) URL.revokeObjectURL(media.objectUrl);
+      revokeMediaList(queueRef.current);
+      revokeReceiptList(receiptsRef.current);
     };
-  }, [media?.objectUrl]);
+  }, []);
 
-  useEffect(() => {
-    return () => {
-      if (receipt?.outputUrl) URL.revokeObjectURL(receipt.outputUrl);
-      if (receipt?.beforeUrl) URL.revokeObjectURL(receipt.beforeUrl);
-    };
-  }, [receipt?.outputUrl, receipt?.beforeUrl]);
-
-  const handleLoadFile = async (file: File) => {
+  const handleLoadFiles = async (files: File[]) => {
+    if (files.length === 0) return;
     try {
       setErrorMsg(null);
-      setReceipt((prev) => {
-        if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
-        if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
-        return null;
+      setReceipts((prev) => {
+        revokeReceiptList(prev);
+        return [];
       });
+      setActiveReceiptIndex(0);
       setProgress(IDLE_PROGRESS);
       setActiveScene('washer');
 
-      const loaded = await inspectLoadedFile(file);
+      if (files.length === 1) {
+        const loaded = await inspectLoadedFile(files[0]);
+        playDoorLatch();
+        setQueue((prev) => {
+          revokeMediaList(prev);
+          return [loaded];
+        });
+        setActiveQueueIndex(0);
+        setCrop(DEFAULT_CROP);
+
+        if (loaded.kind === 'video') {
+          setCycle((cur) => (cur === 'clarify' ? 'both' : cur));
+          const end = Math.max(0.5, Math.min(8, Number(loaded.durationSec.toFixed(1))));
+          setTrim({ start: 0, end, fps: 12 });
+          if (loaded.sizeMB > 0.4) {
+            setTargetMB(Math.min(2.0, Number(Math.max(0.5, loaded.sizeMB * 0.6).toFixed(2))));
+          }
+        } else {
+          setTargetMB(loaded.sizeMB < 0.3 ? 0.15 : 0.5);
+        }
+        return;
+      }
+
+      // Multi-file batch mode: keep image files, capped at MAX_BATCH_IMAGES
+      const imageCandidates = files
+        .filter((f) => f.type.startsWith('image/'))
+        .slice(0, MAX_BATCH_IMAGES);
+      if (imageCandidates.length === 0) {
+        throw new Error('Batch mode supports images only (PNG, JPG, WebP, or static GIF).');
+      }
+
+      const loadedList = await Promise.all(imageCandidates.map((f) => inspectLoadedFile(f)));
+      const staticImages = loadedList.filter((item) => item.kind === 'image');
+      if (staticImages.length === 0) {
+        revokeMediaList(loadedList);
+        throw new Error('Batch mode supports static images only (animated GIF/video is single-load).');
+      }
+      if (staticImages.length < loadedList.length) {
+        revokeMediaList(loadedList.filter((item) => item.kind !== 'image'));
+      }
+
       playDoorLatch();
-      setMedia((prev) => {
-        if (prev?.objectUrl) URL.revokeObjectURL(prev.objectUrl);
-        return loaded;
+      setQueue((prev) => {
+        revokeMediaList(prev);
+        return staticImages;
       });
+      setActiveQueueIndex(0);
       setCrop(DEFAULT_CROP);
 
-      if (loaded.kind === 'video') {
-        setCycle((cur) => (cur === 'clarify' ? 'both' : cur));
-        const end = Math.max(0.5, Math.min(8, Number(loaded.durationSec.toFixed(1))));
-        setTrim({ start: 0, end, fps: 12 });
-        if (loaded.sizeMB > 0.4) {
-          setTargetMB(Math.min(2.0, Number(Math.max(0.5, loaded.sizeMB * 0.6).toFixed(2))));
-        }
-      } else {
-        setTargetMB(loaded.sizeMB < 0.3 ? 0.15 : 0.5);
+      const avgMB =
+        staticImages.reduce((acc, item) => acc + item.sizeMB, 0) / staticImages.length;
+      setTargetMB(avgMB < 0.3 ? 0.15 : 0.5);
+
+      if (files.length > MAX_BATCH_IMAGES) {
+        setErrorMsg(`Batch capped at ${MAX_BATCH_IMAGES} images for browser memory safety.`);
       }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to load file.');
     }
   };
 
+  const handleLoadFile = async (file: File) => handleLoadFiles([file]);
+
+  const handleRemoveQueueItem = (index: number) => {
+    if (isProcessing) return;
+    setQueue((prev) => {
+      const target = prev[index];
+      if (target) URL.revokeObjectURL(target.objectUrl);
+      const next = prev.filter((_, i) => i !== index);
+      setActiveQueueIndex((cur) => Math.max(0, Math.min(cur, next.length - 1)));
+      return next;
+    });
+  };
+
   const handleOutputEdited = (blob: Blob, width: number, height: number) => {
     const nextUrl = URL.createObjectURL(blob);
     const nextSizeMB = blob.size / (1024 * 1024);
-    setReceipt((prev) => {
-      if (!prev) return prev;
-      const savedPercent =
-        prev.originalSizeMB > 0
-          ? Math.round(((prev.originalSizeMB - nextSizeMB) / prev.originalSizeMB) * 100)
-          : 0;
-      return {
-        ...prev,
-        outputBlob: blob,
-        outputUrl: nextUrl,
-        finalSizeMB: nextSizeMB,
-        savedPercent,
-        width,
-        height,
-      };
-    });
+    setReceipts((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== activeReceiptIndex) return item;
+        const savedPercent =
+          item.originalSizeMB > 0
+            ? Math.round(((item.originalSizeMB - nextSizeMB) / item.originalSizeMB) * 100)
+            : 0;
+        return {
+          ...item,
+          outputBlob: blob,
+          outputUrl: nextUrl,
+          finalSizeMB: nextSizeMB,
+          savedPercent,
+          width,
+          height,
+        };
+      })
+    );
   };
 
   // Ctrl/Cmd+V anywhere outside a text field drops the clipboard image straight into the drum.
@@ -371,12 +442,16 @@ export default function App() {
   const handleClearMedia = () => {
     if (isProcessing) return;
     playDoorLatch();
-    setMedia(null);
-    setReceipt((prev) => {
-      if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
-      if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
-      return null;
+    setQueue((prev) => {
+      revokeMediaList(prev);
+      return [];
     });
+    setActiveQueueIndex(0);
+    setReceipts((prev) => {
+      revokeReceiptList(prev);
+      return [];
+    });
+    setActiveReceiptIndex(0);
     setProgress(IDLE_PROGRESS);
     setErrorMsg(null);
     setActiveScene('washer');
@@ -393,40 +468,77 @@ export default function App() {
   };
 
   const handleStartCycle = async () => {
-    if (!media || isProcessing) return;
+    if (queue.length === 0 || isProcessing) return;
     playDoorLatch();
     setErrorMsg(null);
-    setReceipt((prev) => {
-      if (prev?.outputUrl) URL.revokeObjectURL(prev.outputUrl);
-      if (prev?.beforeUrl) URL.revokeObjectURL(prev.beforeUrl);
-      return null;
+    setReceipts((prev) => {
+      revokeReceiptList(prev);
+      return [];
     });
+    setActiveReceiptIndex(0);
 
     try {
-      const result =
-        media.kind === 'image'
-          ? await processImageLaundry({
-              file: media.file,
-              objectUrl: media.objectUrl,
-              cycle,
-              clarify,
-              crop,
-              targetMB,
-              outputFormat: imageFormat,
-              onProgress: setProgress,
-            })
-          : await processVideoLaundry({
-              file: media.file,
-              objectUrl: media.objectUrl,
-              cycle,
-              crop,
-              trim,
-              targetMB,
-              outputFormat: videoFormat,
-              onProgress: setProgress,
-            });
+      if (queue.length === 1 && media) {
+        const result =
+          media.kind === 'image'
+            ? await processImageLaundry({
+                file: media.file,
+                objectUrl: media.objectUrl,
+                cycle,
+                clarify,
+                crop,
+                targetMB,
+                outputFormat: imageFormat,
+                onProgress: setProgress,
+              })
+            : await processVideoLaundry({
+                file: media.file,
+                objectUrl: media.objectUrl,
+                cycle,
+                crop,
+                trim,
+                targetMB,
+                outputFormat: videoFormat,
+                onProgress: setProgress,
+              });
 
-      setReceipt(result);
+        setReceipts([result]);
+        setActiveReceiptIndex(0);
+        setActiveScene('drying');
+        return;
+      }
+
+      const batchResults: LaundryReceipt[] = [];
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        setActiveQueueIndex(i);
+        const itemResult = await processImageLaundry({
+          file: item.file,
+          objectUrl: item.objectUrl,
+          cycle,
+          clarify,
+          crop,
+          targetMB,
+          outputFormat: imageFormat,
+          onProgress: (p) => {
+            const overallPct = Math.min(
+              100,
+              Math.round(((i + p.percent / 100) / queue.length) * 100)
+            );
+            const isLast = i === queue.length - 1;
+            setProgress({
+              ...p,
+              phase: p.phase === 'done' && !isLast ? 'washing' : p.phase,
+              percent: overallPct,
+              statusText: `BATCH ${i + 1}/${queue.length} // ${p.statusText}`,
+            });
+          },
+        });
+        batchResults.push(itemResult);
+      }
+
+      setReceipts(batchResults);
+      setActiveReceiptIndex(0);
       setActiveScene('drying');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An error occurred while processing media.';
@@ -767,9 +879,13 @@ export default function App() {
                       <div className="self-end lg:self-start lg:-mb-3">
                         <LaundryBasketFixture
                           media={media}
+                          queue={queue}
+                          activeQueueIndex={activeQueueIndex}
                           isProcessing={isProcessing}
                           isGeneratingSample={isGeneratingSample}
-                          onFileSelected={handleLoadFile}
+                          onFilesSelected={handleLoadFiles}
+                          onSelectQueueItem={setActiveQueueIndex}
+                          onRemoveQueueItem={handleRemoveQueueItem}
                           onLoadSampleImage={handleLoadSampleImage}
                           onLoadSampleVideo={handleLoadSampleVideo}
                           onLoadSampleBlurryImage={handleLoadSampleBlurryImage}
@@ -794,7 +910,7 @@ export default function App() {
                         trim={trim}
                         onChangeTrim={setTrim}
                         progress={progress}
-                        onFileDropped={handleLoadFile}
+                        onFilesDropped={handleLoadFiles}
                         onClearMedia={handleClearMedia}
                       />
                     </div>
@@ -870,7 +986,10 @@ export default function App() {
                 <DryingLineScene
                   shift={shift}
                   receipt={receipt}
-                  originalMedia={media}
+                  bulkReceipts={receipts}
+                  activeReceiptIndex={activeReceiptIndex}
+                  onSelectReceipt={setActiveReceiptIndex}
+                  originalMedia={queue[activeReceiptIndex] ?? media}
                   crop={crop}
                   onOutputEdited={handleOutputEdited}
                   onBackToWasher={() => setActiveScene('washer')}

@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Copy,
   Download,
+  FolderArchive,
   RotateCcw,
   Eye,
   Sparkles,
@@ -19,6 +20,7 @@ import {
   type StickerThickness,
 } from '../services/hangerStudio';
 import { playMechanicalClick } from '../utils/laundrySfx';
+import { buildZipBlob } from '../utils/zipBuilder';
 import { TouchUpCanvas, TouchUpShelf, useTouchUpBrush } from './TouchUpBrush';
 import type {
   CropBox,
@@ -31,6 +33,9 @@ import type {
 interface DryingLineSceneProps {
   shift: ThemeShift;
   receipt: LaundryReceipt;
+  bulkReceipts?: LaundryReceipt[];
+  activeReceiptIndex?: number;
+  onSelectReceipt?: (index: number) => void;
   originalMedia: LoadedMedia | null;
   crop: CropBox;
   onOutputEdited: (blob: Blob, width: number, height: number) => void;
@@ -47,6 +52,9 @@ type BackdropCloth = 'checker' | 'greenscreen' | 'dark' | 'white';
 export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
   shift,
   receipt,
+  bulkReceipts,
+  activeReceiptIndex = 0,
+  onSelectReceipt,
   originalMedia,
   crop,
   onOutputEdited,
@@ -60,6 +68,7 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
   const [compareFocus, setCompareFocus] = useState<'50% 50%' | '28% 28%' | '50% 82%'>('50% 50%');
   const [hangerFx, setHangerFx] = useState<HangerStudioOptions>(DEFAULT_HANGER_STUDIO);
   const [isApplyingFx, setIsApplyingFx] = useState(false);
+  const [isPackingZip, setIsPackingZip] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
 
   const baseBlobRef = useRef<Blob>(receipt.outputBlob);
@@ -151,6 +160,33 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const handleDownloadAllZip = async () => {
+    if (!bulkReceipts || bulkReceipts.length <= 1 || isPackingZip) return;
+    playMechanicalClick(840);
+    setIsPackingZip(true);
+    try {
+      const zipBlob = await buildZipBlob(
+        bulkReceipts.map((item, idx) => {
+          const baseName = item.fileName.replace(/\.[^/.]+$/, '');
+          return {
+            name: `kilowash-${idx + 1}-${baseName}.${item.fileExtension}`,
+            blob: item.outputBlob,
+          };
+        })
+      );
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kilowash-batch-${bulkReceipts.length}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      setIsPackingZip(false);
+    }
   };
 
   const copyPngToClipboard = async () => {
@@ -290,6 +326,49 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
             BREEZE DRYING ACTIVE
           </span>
         </div>
+
+        {/* BATCH GARMENT SWITCHER STRIP */}
+        {bulkReceipts && bulkReceipts.length > 1 && onSelectReceipt && (
+          <div
+            className="relative z-20 mb-3 p-2 flex flex-wrap items-center gap-1.5"
+            style={{
+              backgroundColor: 'var(--ui-card)',
+              color: 'var(--ui-text)',
+              border: '3px solid var(--ink)',
+              boxShadow: '4px 4px 0 var(--shadow-color)',
+            }}
+          >
+            <span className="font-mono text-[10px] font-bold uppercase px-1 text-adaptive">
+              BATCH RACK ({bulkReceipts.length}):
+            </span>
+            {bulkReceipts.map((item, idx) => {
+              const active = idx === activeReceiptIndex;
+              return (
+                <button
+                  key={`${item.fileName}-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    playMechanicalClick(680);
+                    setShowBefore(false);
+                    onSelectReceipt(idx);
+                  }}
+                  className="neo-btn px-2 py-1 font-mono text-[10px] font-bold flex items-center gap-1 max-w-[165px]"
+                  style={{
+                    backgroundColor: active ? 'var(--active-accent)' : 'var(--ui-subtle)',
+                    color: active ? '#111111' : 'var(--ui-text)',
+                  }}
+                >
+                  <span className="truncate">
+                    #{idx + 1} {item.fileName}
+                  </span>
+                  <span className="opacity-75 shrink-0">
+                    ({item.finalSizeMB.toFixed(2)}MB)
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* CLOTHESLINE AREA */}
         <div className="relative z-20 my-2">
@@ -834,6 +913,21 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
                       {receipt.frameCount} frame{receipt.frameCount > 1 ? 's' : ''}
                     </dd>
                   </div>
+                  {bulkReceipts && bulkReceipts.length > 1 && (
+                    <div
+                      className="flex justify-between gap-2 pt-2 border-t border-dashed"
+                      style={{ borderColor: 'var(--ink)' }}
+                    >
+                      <dt className="opacity-80">BATCH TOTAL</dt>
+                      <dd className="font-bold">
+                        {bulkReceipts.length} files •{' '}
+                        {bulkReceipts
+                          .reduce((sum, item) => sum + item.finalSizeMB, 0)
+                          .toFixed(2)}{' '}
+                        MB
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               </div>
             </motion.div>
@@ -961,6 +1055,26 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
             <Download size={16} />
             UNPIN &amp; DOWNLOAD (.{receipt.fileExtension.toUpperCase()})
           </button>
+
+          {bulkReceipts && bulkReceipts.length > 1 && (
+            <button
+              type="button"
+              disabled={isPackingZip}
+              onClick={() => {
+                void handleDownloadAllZip();
+              }}
+              className="neo-btn px-4 py-2.5 font-extrabold text-xs sm:text-sm uppercase flex items-center gap-2 disabled:opacity-60"
+              style={{
+                backgroundColor: '#FFE600',
+                color: '#111111',
+              }}
+            >
+              <FolderArchive size={16} />
+              {isPackingZip
+                ? 'PACKING ZIP...'
+                : `DOWNLOAD ALL (.ZIP • ${bulkReceipts.length})`}
+            </button>
+          )}
         </div>
       </div>
     </div>

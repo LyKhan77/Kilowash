@@ -29,7 +29,7 @@ interface LaundryMachineProps {
   trim: VideoTrim;
   onChangeTrim: (t: VideoTrim) => void;
   progress: WashProgress;
-  onFileDropped: (file: File) => void;
+  onFilesDropped: (files: File[]) => void;
   onClearMedia: () => void;
 }
 
@@ -48,7 +48,7 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
   trim,
   onChangeTrim,
   progress,
-  onFileDropped,
+  onFilesDropped,
   onClearMedia,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -96,9 +96,9 @@ export const LaundryMachine: React.FC<LaundryMachineProps> = ({
     e.preventDefault();
     setIsDragOver(false);
     if (isProcessing) return;
-    const dropped = e.dataTransfer.files?.[0];
-    if (dropped) {
-      onFileDropped(dropped);
+    const dropped = Array.from(e.dataTransfer.files ?? []);
+    if (dropped.length > 0) {
+      onFilesDropped(dropped);
     }
   };
 
