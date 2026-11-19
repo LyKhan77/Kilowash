@@ -1,0 +1,287 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #111111;
+  --shadow-color: #111111;
+  --wall: #ECE6DC;
+  --wall-grid: rgba(17, 17, 17, 0.11);
+  --floor-a: #DDD5C7;
+  --floor-b: #CFC5B4;
+  --pipe: #BDB5A6;
+  --machine-body: #FFFDF8;
+  --machine-side: #E5DFD3;
+  --panel: #D8D3C8;
+  --panel-text: #111111;
+  --wash-accent: #00E5FF;
+  --spin-accent: #FF5416;
+  --both-accent: #FFE600;
+  --active-accent: #00E5FF;
+  --ui-bg: #F4F0EA;
+  --ui-card: #FFFFFF;
+  --ui-subtle: #F7F4EE;
+  --ui-text: #111111;
+  --ui-muted: #525252;
+  --sign-bg: #111111;
+  --sign-text: #FFE600;
+  --sign-border: #111111;
+  --checker-a: #FFFFFF;
+  --checker-b: #D7D7D7;
+  --basket-body: #D6CEBF;
+  --basket-rim: #FFFDF8;
+  --night-rim: transparent;
+}
+
+[data-shift='night'] {
+  --ink: #060A12;
+  --shadow-color: #03060C;
+  --wall: #121A26;
+  --wall-grid: rgba(148, 163, 184, 0.16);
+  --floor-a: #0E1520;
+  --floor-b: #172233;
+  --pipe: #283548;
+  --machine-body: #1E293B;
+  --machine-side: #131C2B;
+  --panel: #0F172A;
+  --panel-text: #F8FAFC;
+  --wash-accent: #00E5FF;
+  --spin-accent: #FF5416;
+  --both-accent: #FFE600;
+  --ui-bg: #0B111A;
+  --ui-card: #162030;
+  --ui-subtle: #1D293B;
+  --ui-text: #F8FAFC;
+  --ui-muted: #CBD5E1;
+  --sign-bg: #090D16;
+  --sign-text: #00E5FF;
+  --sign-border: #00E5FF;
+  --checker-a: #16202C;
+  --checker-b: #223041;
+  --basket-body: #1E293B;
+  --basket-rim: #334155;
+  --night-rim: rgba(148, 163, 184, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background-color: var(--ui-bg);
+  color: var(--ui-text);
+  transition: background-color 0.4s ease, color 0.4s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+.text-adaptive {
+  color: var(--ui-text);
+}
+
+.text-on-accent {
+  color: #111111;
+}
+
+/* Neo-Brutalist Surface & Controls */
+.neo-card {
+  background-color: var(--ui-card);
+  color: var(--ui-text);
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--shadow-color);
+  outline: 1px solid var(--night-rim);
+  outline-offset: -4px;
+  transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+.neo-btn {
+  border: 2.5px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--shadow-color);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.neo-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--shadow-color);
+}
+
+.neo-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--shadow-color);
+}
+
+.neo-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Architectural Swiss Wall Grid */
+.swiss-wall {
+  background-color: var(--wall);
+  color: var(--ui-text);
+  background-image:
+    linear-gradient(to right, var(--wall-grid) 2px, transparent 2px),
+    linear-gradient(to bottom, var(--wall-grid) 2px, transparent 2px);
+  background-size: 56px 56px;
+  transition: background-color 0.45s ease, color 0.4s ease;
+}
+
+/* Perspective Laundromat Floor */
+.laundry-floor {
+  background-color: var(--floor-a);
+  background-image:
+    linear-gradient(90deg, var(--floor-b) 50%, transparent 50%),
+    linear-gradient(var(--floor-b) 50%, transparent 50%);
+  background-size: 56px 44px;
+  transition: background-color 0.45s ease;
+}
+
+/* Transparency Checkerboard */
+.checkerboard-bg {
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+/* 2.5D Extrusions */
+.machine-top-extrude {
+  height: 20px;
+  margin-right: 18px;
+  background-color: var(--machine-side);
+  border: 3px solid var(--ink);
+  border-bottom: none;
+  transform: skewX(-42deg);
+  transform-origin: bottom left;
+  transition: background-color 0.4s ease;
+}
+
+.machine-side-depth {
+  width: 20px;
+  background-color: var(--machine-side);
+  border: 4px solid var(--ink);
+  border-left: none;
+  transform: skewY(-47deg);
+  transform-origin: top left;
+  transition: background-color 0.4s ease;
+}
+
+/* Keyframes */
+@keyframes waveSlide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes bubbleFloat {
+  0% {
+    transform: translateY(18px) scale(0.6);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.92;
+  }
+  100% {
+    transform: translateY(-96px) scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes driftCloud {
+  0%, 100% {
+    transform: translateX(-8px);
+  }
+  50% {
+    transform: translateX(18px);
+  }
+}
+
+@keyframes twinkleStar {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes waterDrip {
+  0% {
+    transform: translateY(0) scaleY(0.8);
+    opacity: 0.95;
+  }
+  80% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(42px) scaleY(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes scanBeam {
+  0%, 100% {
+    top: 8%;
+  }
+  50% {
+    top: 88%;
+  }
+}
+
+.animate-wave-slide {
+  animation: waveSlide 2.2s linear infinite;
+}
+
+.animate-bubble {
+  animation: bubbleFloat 1.9s ease-in infinite;
+}
+
+.animate-cloud-slow {
+  animation: driftCloud 12s ease-in-out infinite;
+}
+
+.animate-cloud-reverse {
+  animation: driftCloud 16s ease-in-out infinite reverse;
+}
+
+.animate-twinkle {
+  animation: twinkleStar 2.4s ease-in-out infinite;
+}
+
+.animate-drip {
+  animation: waterDrip 1.5s ease-in infinite;
+}
+
+.animate-scan-beam {
+  animation: scanBeam 1.2s ease-in-out infinite;
+}
+
+/* Custom Range Slider */
+input[type='range'].swiss-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  outline: none;
+}
+
+input[type='range'].swiss-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--active-accent);
+  border: 2.5px solid var(--ink);
+  cursor: pointer;
+}

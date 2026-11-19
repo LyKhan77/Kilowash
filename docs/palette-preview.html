@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KILOWASH // Palette & 2.5D Room Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@700;800&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --ink: #111111;
+      --shadow-color: #111111;
+      --border-w: 3px;
+      --wall: #ECE6DC;
+      --wall-grid: rgba(17, 17, 17, 0.12);
+      --floor-a: #DCD4C6;
+      --floor-b: #CFC5B4;
+      --pipe: #B8B0A2;
+      --machine-body: #FFFDF8;
+      --machine-side: #E5DFD3;
+      --panel: #D8D3C8;
+      --panel-text: #111111;
+      --wash-accent: #00E5FF;
+      --spin-accent: #FF5416;
+      --both-accent: #FFE600;
+      --active-accent: #00E5FF;
+      --ui-bg: #FAF7F2;
+      --ui-card: #FFFFFF;
+      --ui-text: #111111;
+      --ui-muted: #525252;
+      --neon-glow: 0px 0px 0px transparent;
+      --drum-glow: inset 0 0 24px rgba(0, 0, 0, 0.2);
+      --room-vignette: rgba(0, 0, 0, 0);
+      --sunbeam-opacity: 1;
+      --night-stars-opacity: 0;
+      --sign-bg: #111111;
+      --sign-text: #FFE600;
+      --sign-border: #111111;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--ui-bg);
+      color: var(--ui-text);
+      min-height: 100vh;
+      transition: background-color 0.35s ease, color 0.35s ease;
+      padding: 18px;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .shell {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* TOP BAR */
+    .topbar {
+      background: var(--ui-card);
+      border: var(--border-w) solid var(--ink);
+      box-shadow: 6px 6px 0 var(--shadow-color);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .topbar-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand-tag {
+      background: var(--ink);
+      color: #FFFDF8;
+      padding: 4px 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .brand h1 {
+      font-size: clamp(18px, 2.2vw, 24px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+    }
+
+    .theme-zone {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .shift-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border: 2px solid var(--ink);
+      background: var(--both-accent);
+      color: #111111;
+      text-transform: uppercase;
+    }
+
+    /* Uiverse rishichawda/fluffy-robin-48 inspired day/night toggle */
+    #theme-toggle-button {
+      font-size: 17px;
+      position: relative;
+      display: inline-block;
+      width: 6.2em;
+      height: 2.65em;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #toggle {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    #theme-toggle-button svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      box-shadow: 3px 3px 0 var(--ink);
+      overflow: hidden;
+      background: #87CEEB;
+    }
+
+    #container,
+    #patches,
+    #stars,
+    #button,
+    #sun,
+    #moon,
+    #cloud {
+      transition-property: all;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      transition-duration: 0.3s;
+    }
+
+    #container {
+      fill: #70C5EE;
+    }
+
+    #toggle:checked + svg #container {
+      fill: #2b4360;
+    }
+
+    #button {
+      transform: translate(3px, 2.5px);
+    }
+
+    #toggle:checked + svg #button {
+      transform: translate(40px, 2.5px);
+    }
+
+    #sun {
+      opacity: 1;
+      transform-origin: center;
+    }
+
+    #toggle:checked + svg #sun {
+      opacity: 0;
+    }
+
+    #moon {
+      opacity: 0;
+    }
+
+    #toggle:checked + svg #moon {
+      opacity: 1;
+    }
+
+    #cloud {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    #toggle:checked + svg #cloud {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+
+    #stars {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    #toggle:checked + svg #stars {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .group-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ui-muted);
+      margin-right: 4px;
+    }
+
+    .neo-btn {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 8px 13px;
+      border: 2.5px solid var(--ink);
+      background: var(--ui-card);
+      color: var(--ui-text);
+      box-shadow: 3px 3px 0 var(--shadow-color);
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.2s ease, color 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .neo-btn:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 4px 4px 0 var(--shadow-color);
+    }
+
+    .neo-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0 var(--shadow-color);
+    }
+
+    .neo-btn.active {
+      background: var(--active-accent);
+      color: #111111;
+    }
+
+    .neo-btn.spin-toggle.active {
+      background: #111111;
+      color: #FFE600;
+    }
+
+    /* 2.5D LAUNDROMAT ROOM STAGE */
+    .room-frame {
+      position: relative;
+      border: var(--border-w) solid var(--ink);
+      box-shadow: 8px 8px 0 var(--shadow-color);
+      overflow: hidden;
+      background: var(--wall);
+      min-height: 580px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: background-color 0.45s ease, border-color 0.35s ease;
+    }
+
+    /* Swiss Architectural Tiled Wall */
+    .room-wall {
+      position: relative;
+      flex: 1;
+      padding: 26px 28px 0 28px;
+      background-color: var(--wall);
+      background-image:
+        linear-gradient(to right, var(--wall-grid) 2px, transparent 2px),
+        linear-gradient(to bottom, var(--wall-grid) 2px, transparent 2px);
+      background-size: 56px 56px;
+      transition: background-color 0.45s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .room-vignette {
+      position: absolute;
+      inset: 0;
+      background: var(--room-vignette);
+      pointer-events: none;
+      transition: background 0.45s ease;
+      z-index: 1;
+    }
+
+    /* Ceiling industrial pipe */
+    .ceiling-pipe {
+      position: absolute;
+      top: 16px;
+      left: 0;
+      right: 0;
+      height: 18px;
+      background: var(--pipe);
+      border-top: 3px solid var(--ink);
+      border-bottom: 3px solid var(--ink);
+      z-index: 2;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      transition: background-color 0.45s ease;
+    }
+
+    .pipe-clamp {
+      width: 14px;
+      height: 26px;
+      background: var(--panel);
+      border: 3px solid var(--ink);
+    }
+
+    /* Diagonal sunbeam in Day mode */
+    .sunbeam {
+      position: absolute;
+      top: 40px;
+      left: 40px;
+      width: 520px;
+      height: 520px;
+      background: linear-gradient(
+        130deg,
+        rgba(255, 245, 190, 0.45) 0%,
+        rgba(255, 245, 190, 0.14) 52%,
+        rgba(255, 245, 190, 0) 80%
+      );
+      clip-path: polygon(0 12%, 44% 0, 100% 85%, 24% 100%);
+      pointer-events: none;
+      opacity: var(--sunbeam-opacity);
+      transition: opacity 0.45s ease;
+      z-index: 2;
+    }
+
+    /* Room layout grid: left window + wall sign + center machine + right bench/props */
+    .room-content {
+      position: relative;
+      z-index: 3;
+      margin-top: 32px;
+      display: grid;
+      grid-template-columns: 240px minmax(360px, 470px) 1fr;
+      gap: 28px;
+      align-items: end;
+      flex: 1;
+    }
+
+    /* Window on the left */
+    .left-wall-col {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-self: start;
+      padding-top: 12px;
+    }
+
+    .room-window {
+      width: 100%;
+      height: 230px;
+      border: 4px solid var(--ink);
+      background: #77CCF2;
+      box-shadow: 6px 6px 0 var(--shadow-color);
+      position: relative;
+      overflow: hidden;
+      transition: background 0.45s ease;
+    }
+
+    body.night .room-window {
+      background: linear-gradient(180deg, #0D1B2E 0%, #2B4360 100%);
+    }
+
+    .window-sill {
+      height: 16px;
+      background: var(--machine-body);
+      border: 3px solid var(--ink);
+      margin-top: -8px;
+      margin-left: -6px;
+      margin-right: -6px;
+      box-shadow: 4px 4px 0 var(--shadow-color);
+      position: relative;
+      z-index: 4;
+      transition: background-color 0.45s ease;
+    }
+
+    .window-mullion-v {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--ink);
+      transform: translateX(-50%);
+      z-index: 3;
+    }
+
+    .window-mullion-h {
+      position: absolute;
+      top: 52%;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--ink);
+      transform: translateY(-50%);
+      z-index: 3;
+    }
+
+    .sky-sun {
+      position: absolute;
+      top: 22px;
+      right: 26px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #FFD426;
+      border: 3px solid var(--ink);
+      transition: transform 0.5s ease, opacity 0.4s ease;
+    }
+
+    body.night .sky-sun {
+      transform: translateY(45px) scale(0.5);
+      opacity: 0;
+    }
+
+    .sky-moon {
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      width: 40px;
+      height: 40px;
+      opacity: 0;
+      transform: translateY(-30px);
+      transition: transform 0.5s ease, opacity 0.4s ease;
+    }
+
+    body.night .sky-moon {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .sky-cloud {
+      position: absolute;
+      background: #FFFFFF;
+      border: 2.5px solid var(--ink);
+      border-radius: 999px;
+      transition: opacity 0.4s ease;
+    }
+
+    .cloud-1 {
+      width: 78px;
+      height: 26px;
+      top: 46px;
+      left: 16px;
+      animation: drift 12s linear infinite;
+    }
+
+    .cloud-2 {
+      width: 62px;
+      height: 22px;
+      top: 126px;
+      left: 110px;
+      animation: drift 16s linear infinite reverse;
+    }
+
+    body.night .sky-cloud {
+      opacity: 0;
+    }
+
+    .sky-stars {
+      position: absolute;
+      inset: 0;
+      opacity: var(--night-stars-opacity);
+      transition: opacity 0.45s ease;
+    }
+
+    .star-dot {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: #FFF8C9;
+      border-radius: 50%;
+      animation: twinkle 2.4s ease-in-out infinite;
+    }
+
+    /* Neon / Signage Box */
+    .wall-sign {
+      border: 3px solid var(--sign-border);
+      background: var(--sign-bg);
+      color: var(--sign-text);
+      padding: 12px 14px;
+      box-shadow: 5px 5px 0 var(--shadow-color), var(--neon-glow);
+      transition: all 0.4s ease;
+    }
+
+    .wall-sign-top {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      opacity: 0.85;
+      margin-bottom: 4px;
+    }
+
+    .wall-sign-main {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .neon-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 2px 7px;
+      border: 2px solid currentColor;
+    }
+
+    /* CENTERPIECE 2.5D LAUNDRY MACHINE */
+    .machine-stage {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      position: relative;
+      margin-bottom: -24px;
+      z-index: 5;
+    }
+
+    .machine-25d {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      transition: transform 0.12s ease;
+    }
+
+    .machine-25d.vibrating {
+      animation: rumble 0.13s infinite linear;
+    }
+
+    /* 2.5D Side & Top Depth Extrusion */
+    .machine-top-extrude {
+      height: 22px;
+      margin: 0 18px 0 0;
+      background: var(--machine-side);
+      border: 3px solid var(--ink);
+      border-bottom: none;
+      transform: skewX(-42deg);
+      transform-origin: bottom left;
+      transition: background-color 0.4s ease;
+    }
+
+    .machine-body-wrap {
+      display: flex;
+      align-items: stretch;
+    }
+
+    .machine-front {
+      flex: 1;
+      background: var(--machine-body);
+      border: 4px solid var(--ink);
+      box-shadow: 8px 10px 0 var(--shadow-color);
+      padding: 16px 18px 24px 18px;
+      position: relative;
+      transition: background-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .machine-side-depth {
+      width: 22px;
+      background: var(--machine-side);
+      border: 4px solid var(--ink);
+      border-left: none;
+      transform: skewY(-46deg);
+      transform-origin: top left;
+      transition: background-color 0.4s ease;
+    }
+
+    /* Machine Control Header (Swiss Instrument Panel) */
+    .machine-panel {
+      background: var(--panel);
+      color: var(--panel-text);
+      border: 3px solid var(--ink);
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      transition: background-color 0.4s ease, color 0.4s ease;
+    }
+
+    .panel-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .led-screen {
+      background: #0B1014;
+      color: var(--active-accent);
+      border: 2.5px solid var(--ink);
+      padding: 7px 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.7), var(--neon-glow);
+      transition: color 0.3s ease, box-shadow 0.4s ease;
+    }
+
+    .panel-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .rotary-dial {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--ui-card);
+      border: 3px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .rotary-dial::after {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      width: 4px;
+      height: 14px;
+      background: var(--active-accent);
+      border: 1.5px solid var(--ink);
+      transform: translateX(-50%);
+    }
+
+    .cycle-lamps {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .lamp-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 2px solid var(--ink);
+      background: #555;
+      transition: all 0.25s ease;
+    }
+
+    .lamp-dot.on-wash { background: var(--wash-accent); box-shadow: 0 0 8px var(--wash-accent); }
+    .lamp-dot.on-spin { background: var(--spin-accent); box-shadow: 0 0 8px var(--spin-accent); }
+    .lamp-dot.on-both { background: var(--both-accent); box-shadow: 0 0 8px var(--both-accent); }
+
+    /* Circular Glass Drum Door */
+    .drum-housing {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 6px 0 12px 0;
+    }
+
+    .drum-outer-ring {
+      width: 274px;
+      height: 274px;
+      border-radius: 50%;
+      background: var(--panel);
+      border: 4px solid var(--ink);
+      box-shadow: 5px 5px 0 var(--shadow-color), var(--neon-glow);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      transition: background-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .door-hinge {
+      position: absolute;
+      left: -10px;
+      width: 14px;
+      height: 46px;
+      background: var(--ink);
+      border-radius: 3px;
+    }
+
+    .door-latch {
+      position: absolute;
+      right: -12px;
+      width: 18px;
+      height: 54px;
+      background: var(--active-accent);
+      border: 3px solid var(--ink);
+      border-radius: 3px;
+      transition: background-color 0.3s ease;
+    }
+
+    .drum-glass {
+      width: 218px;
+      height: 218px;
+      border-radius: 50%;
+      border: 4px solid var(--ink);
+      position: relative;
+      overflow: hidden;
+      /* Transparency checkerboard */
+      background-color: #ffffff;
+      background-image:
+        linear-gradient(45deg, #d7d7d7 25%, transparent 25%),
+        linear-gradient(-45deg, #d7d7d7 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d7d7d7 75%),
+        linear-gradient(-45deg, transparent 75%, #d7d7d7 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      box-shadow: var(--drum-glow);
+    }
+
+    body.night .drum-glass {
+      background-color: #16202C;
+      background-image:
+        linear-gradient(45deg, #223041 25%, transparent 25%),
+        linear-gradient(-45deg, #223041 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #223041 75%),
+        linear-gradient(-45deg, transparent 75%, #223041 75%);
+    }
+
+    /* Rotating drum ribs */
+    .drum-ribs {
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .drum-ribs.spinning {
+      animation: spinDrum 1.1s linear infinite;
+    }
+
+    .drum-ribs.fast-spin {
+      animation: spinDrum 0.36s linear infinite;
+    }
+
+    .rib {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 14px;
+      height: 36px;
+      margin-left: -7px;
+      background: rgba(17, 17, 17, 0.28);
+      border: 2px solid var(--ink);
+      border-radius: 4px;
+      transform-origin: 7px 121px;
+    }
+
+    .rib-2 { transform: rotate(120deg); }
+    .rib-3 { transform: rotate(240deg); }
+
+    /* Sample Meme Subject inside Drum */
+    .meme-subject {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      transition: transform 0.25s ease;
+    }
+
+    .meme-subject.tumbling {
+      animation: tumble 1.1s ease-in-out infinite;
+    }
+
+    .meme-subject.centrifuge {
+      animation: centrifuge 0.36s linear infinite;
+    }
+
+    /* Liquid Wave & Foam Bubbles inside Drum */
+    .liquid-layer {
+      position: absolute;
+      left: -20%;
+      right: -20%;
+      bottom: -8%;
+      height: 52%;
+      z-index: 4;
+      pointer-events: none;
+      opacity: 0.72;
+      transition: height 0.35s ease, opacity 0.35s ease;
+    }
+
+    .liquid-wave {
+      width: 200%;
+      height: 100%;
+      animation: waveSlide 3.4s linear infinite;
+    }
+
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.85);
+      border: 2px solid var(--ink);
+      z-index: 5;
+      animation: bubbleFloat 2.4s ease-in infinite;
+    }
+
+    .glass-glare {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(125deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 45%);
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    /* Machine Bottom Service Hatch & Feet */
+    .machine-footer {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .spec-plate {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      border: 2px solid var(--ink);
+      padding: 4px 8px;
+      background: var(--ui-card);
+      color: var(--ui-text);
+    }
+
+    .vent-slots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .vent-slot {
+      width: 6px;
+      height: 18px;
+      background: var(--ink);
+    }
+
+    /* Right column props: Laundry Basket & Detergent */
+    .right-wall-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 14px;
+      padding-bottom: 12px;
+    }
+
+    .wall-poster {
+      border: 3px solid var(--ink);
+      background: var(--ui-card);
+      color: var(--ui-text);
+      padding: 12px;
+      box-shadow: 5px 5px 0 var(--shadow-color);
+      max-width: 240px;
+      transition: background-color 0.4s ease, color 0.4s ease;
+    }
+
+    .wall-poster h3 {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+
+    .wall-poster ul {
+      list-style: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .detergent-shelf {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .bottle {
+      width: 38px;
+      height: 60px;
+      border: 3px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--shadow-color);
+      position: relative;
+    }
+
+    .bottle::before {
+      content: "";
+      position: absolute;
+      top: -11px;
+      left: 9px;
+      width: 14px;
+      height: 8px;
+      background: var(--ink);
+    }
+
+    /* Floor */
+    .room-floor {
+      height: 88px;
+      border-top: 4px solid var(--ink);
+      background-color: var(--floor-a);
+      background-image:
+        linear-gradient(90deg, var(--floor-b) 50%, transparent 50%),
+        linear-gradient(var(--floor-b) 50%, transparent 50%);
+      background-size: 56px 44px;
+      position: relative;
+      z-index: 4;
+      transition: background-color 0.45s ease;
+    }
+
+    .floor-glow {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 360px;
+      height: 44px;
+      background: radial-gradient(ellipse at top, var(--active-accent), transparent 72%);
+      opacity: 0.14;
+      transition: opacity 0.45s ease, background 0.35s ease;
+    }
+
+    body.night .floor-glow {
+      opacity: 0.45;
+    }
+
+    /* SWATCH INSPECTOR CARD */
+    .inspector-card {
+      background: var(--ui-card);
+      border: var(--border-w) solid var(--ink);
+      box-shadow: 6px 6px 0 var(--shadow-color);
+      padding: 16px 18px;
+      transition: background-color 0.35s ease, border-color 0.35s ease;
+    }
+
+    .inspector-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .inspector-head h2 {
+      font-size: 16px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      gap: 12px;
+    }
+
+    .swatch-item {
+      border: 2.5px solid var(--ink);
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--ui-bg);
+    }
+
+    .swatch-box {
+      width: 34px;
+      height: 34px;
+      border: 2.5px solid var(--ink);
+      flex-shrink: 0;
+    }
+
+    .swatch-meta {
+      min-width: 0;
+    }
+
+    .swatch-role {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--ui-muted);
+    }
+
+    .swatch-hex {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    /* ANIMATIONS */
+    @keyframes spinDrum {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes tumble {
+      0% { transform: rotate(0deg) translateY(0px) scale(1); }
+      25% { transform: rotate(90deg) translateY(-10px) scale(0.95); }
+      50% { transform: rotate(180deg) translateY(4px) scale(1); }
+      75% { transform: rotate(270deg) translateY(-8px) scale(0.95); }
+      100% { transform: rotate(360deg) translateY(0px) scale(1); }
+    }
+
+    @keyframes centrifuge {
+      from { transform: rotate(0deg) scale(0.94); }
+      to { transform: rotate(360deg) scale(0.94); }
+    }
+
+    @keyframes rumble {
+      0% { transform: translate(0px, 0px); }
+      25% { transform: translate(-2px, 1px); }
+      50% { transform: translate(2px, -1px); }
+      75% { transform: translate(-1px, -2px); }
+      100% { transform: translate(1px, 1px); }
+    }
+
+    @keyframes waveSlide {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    @keyframes bubbleFloat {
+      0% { transform: translateY(18px) scale(0.6); opacity: 0; }
+      30% { opacity: 0.9; }
+      100% { transform: translateY(-60px) scale(1.1); opacity: 0; }
+    }
+
+    @keyframes drift {
+      0% { transform: translateX(-10px); }
+      50% { transform: translateX(22px); }
+      100% { transform: translateX(-10px); }
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.35; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    @media (max-width: 960px) {
+      .room-content {
+        grid-template-columns: 1fr;
+        align-items: center;
+      }
+      .left-wall-col,
+      .right-wall-col {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+      .room-window {
+        max-width: 240px;
+      }
+      .machine-stage {
+        margin-bottom: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <div class="topbar-head">
+        <div class="brand">
+          <span class="brand-tag">SYS-24H // PREVIEW</span>
+          <h1>KILOWASH // PALETTE &amp; ROOM PREVIEW</h1>
+        </div>
+        <div class="theme-zone">
+          <span id="shiftBadge" class="shift-badge">DAY SHIFT // SIANG</span>
+          <!-- rishichawda/fluffy-robin-48 inspired Day/Night Toggle -->
+          <label id="theme-toggle-button" title="Toggle Siang / Malam (fluffy-robin-48)">
+            <input type="checkbox" id="toggle" />
+            <svg viewBox="0 0 90 36" xmlns="http://www.w3.org/2000/svg">
+              <rect id="container" x="0" y="0" width="90" height="36" rx="18" />
+              <g id="cloud">
+                <path
+                  d="M52 24a4.5 4.5 0 0 1 4.5-4.5h2a3.5 3.5 0 0 1 3.5 3.5v1a3.5 3.5 0 0 1-3.5 3.5h-6.5a1.5 1.5 0 0 1 0-3z"
+                  fill="#ffffff"
+                />
+                <circle cx="66" cy="14" r="4" fill="#ffffff" />
+                <circle cx="71" cy="15" r="5" fill="#ffffff" />
+                <circle cx="76" cy="16" r="3.5" fill="#ffffff" />
+              </g>
+              <g id="stars">
+                <circle cx="16" cy="12" r="1.4" fill="#fff8c9" />
+                <circle cx="26" cy="24" r="1.1" fill="#fff8c9" />
+                <circle cx="34" cy="10" r="1.6" fill="#fff8c9" />
+                <path d="M22 16l1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z" fill="#fff8c9" />
+              </g>
+              <g id="button">
+                <circle cx="15.5" cy="15.5" r="13" fill="#ffffff" stroke="#111111" stroke-width="2" />
+                <g id="sun">
+                  <circle cx="15.5" cy="15.5" r="7.5" fill="#f39c12" />
+                  <circle cx="15.5" cy="15.5" r="5" fill="#f1c40f" />
+                </g>
+                <g id="moon">
+                  <circle cx="15.5" cy="15.5" r="8" fill="#d9e2ec" />
+                  <circle cx="12.5" cy="13" r="1.8" fill="#9fb3c8" />
+                  <circle cx="18" cy="18" r="2.2" fill="#9fb3c8" />
+                  <circle cx="18" cy="11.5" r="1.1" fill="#9fb3c8" />
+                </g>
+              </g>
+            </svg>
+          </label>
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <div class="btn-group">
+          <span class="group-label">Color Palette:</span>
+          <button class="neo-btn palette-btn active" data-palette="A">
+            01 // PALET A: SWISS COIN-OP 24H (Recommended)
+          </button>
+          <button class="neo-btn palette-btn" data-palette="B">
+            02 // PALET B: TOKYO MINT LAUNDROMAT
+          </button>
+          <button class="neo-btn palette-btn" data-palette="C">
+            03 // PALET C: BAUHAUS HEAVY DUTY
+          </button>
+        </div>
+
+        <div class="btn-group">
+          <span class="group-label">Cycle:</span>
+          <button class="neo-btn cycle-btn active" data-cycle="wash">WASH (Remove BG)</button>
+          <button class="neo-btn cycle-btn" data-cycle="spin">SPIN (Compress MB)</button>
+          <button class="neo-btn cycle-btn" data-cycle="both">WASH + SPIN</button>
+          <button id="spinAnimBtn" class="neo-btn spin-toggle">TEST SPIN ANIMATION: OFF</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 2.5D ARCHITECTURAL LAUNDROMAT ROOM -->
+    <main class="room-frame">
+      <div class="room-wall">
+        <div class="room-vignette"></div>
+        <div class="sunbeam"></div>
+
+        <!-- Industrial Ceiling Pipe -->
+        <div class="ceiling-pipe">
+          <div class="pipe-clamp"></div>
+          <div class="pipe-clamp"></div>
+          <div class="pipe-clamp"></div>
+          <div class="pipe-clamp"></div>
+        </div>
+
+        <div class="room-content">
+          <!-- LEFT: WINDOW + WALL NEON SIGN -->
+          <div class="left-wall-col">
+            <div>
+              <div class="room-window">
+                <div class="sky-sun"></div>
+                <svg class="sky-moon" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M27 29A12 12 0 0 1 15 9a12 12 0 1 0 16 17A11.9 11.9 0 0 1 27 29Z"
+                    fill="#FFE600"
+                    stroke="#111111"
+                    stroke-width="2"
+                  />
+                </svg>
+                <div class="sky-cloud cloud-1"></div>
+                <div class="sky-cloud cloud-2"></div>
+                <div class="sky-stars">
+                  <div class="star-dot" style="top: 22px; left: 26px"></div>
+                  <div class="star-dot" style="top: 48px; left: 74px; animation-delay: 0.7s"></div>
+                  <div class="star-dot" style="top: 84px; left: 32px; animation-delay: 1.2s"></div>
+                  <div class="star-dot" style="top: 34px; left: 120px; animation-delay: 0.4s"></div>
+                  <div class="star-dot" style="top: 96px; left: 162px; animation-delay: 1.5s"></div>
+                </div>
+                <div class="window-mullion-v"></div>
+                <div class="window-mullion-h"></div>
+              </div>
+              <div class="window-sill"></div>
+            </div>
+
+            <div class="wall-sign">
+              <div class="wall-sign-top">SELF-SERVICE MEDIA LAB</div>
+              <div class="wall-sign-main">
+                <span>KILOWASH</span>
+                <span class="neon-pill">OPEN 24H</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CENTER: 2.5D KILOWASH MACHINE -->
+          <div class="machine-stage">
+            <div id="machine25d" class="machine-25d">
+              <div class="machine-top-extrude"></div>
+              <div class="machine-body-wrap">
+                <div class="machine-front">
+                  <!-- Swiss Control Panel -->
+                  <div class="machine-panel">
+                    <div>
+                      <div class="panel-id">MODEL KW-01 // DIGITAL DRY-CLEAN &amp; TARGET MB COMPRESSOR</div>
+                      <div id="ledScreen" class="led-screen">
+                        <span id="ledText">TARGET: 2.0 MB | 12 FPS | GIF</span>
+                        <span id="ledStatus">READY</span>
+                      </div>
+                    </div>
+                    <div class="panel-controls">
+                      <div class="cycle-lamps">
+                        <span id="lampWash" class="lamp-dot on-wash"></span>
+                        <span id="lampSpin" class="lamp-dot"></span>
+                        <span id="lampBoth" class="lamp-dot"></span>
+                      </div>
+                      <div id="rotaryDial" class="rotary-dial" title="Putar program"></div>
+                    </div>
+                  </div>
+
+                  <!-- Circular Glass Drum Door -->
+                  <div class="drum-housing">
+                    <div class="drum-outer-ring">
+                      <div class="door-hinge"></div>
+                      <div class="door-latch"></div>
+
+                      <div class="drum-glass">
+                        <!-- Sample Meme Character over Transparency Checkerboard -->
+                        <div id="memeSubject" class="meme-subject">
+                          <svg width="118" height="118" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Meme Cat with Sunglasses -->
+                            <path
+                              d="M28 44 L22 18 L48 32 Q60 28 72 32 L98 18 L92 44 Q102 60 96 82 Q88 102 60 102 Q32 102 24 82 Q18 60 28 44 Z"
+                              fill="#FFB84D"
+                              stroke="#111111"
+                              stroke-width="4"
+                              stroke-linejoin="round"
+                            />
+                            <path d="M29 39 L26 24 L42 33 Z" fill="#FF7A59" stroke="#111111" stroke-width="2.5" />
+                            <path d="M91 39 L94 24 L78 33 Z" fill="#FF7A59" stroke="#111111" stroke-width="2.5" />
+                            <!-- Cool Shades -->
+                            <rect x="29" y="50" width="27" height="15" rx="2" fill="#111111" />
+                            <rect x="64" y="50" width="27" height="15" rx="2" fill="#111111" />
+                            <rect x="55" y="54" width="10" height="4" fill="#111111" />
+                            <line x1="34" y1="54" x2="43" y2="61" stroke="#FFFFFF" stroke-width="2.5" />
+                            <line x1="69" y1="54" x2="78" y2="61" stroke="#FFFFFF" stroke-width="2.5" />
+                            <!-- Whiskers & Smirk -->
+                            <polygon points="56,71 64,71 60,76" fill="#111111" />
+                            <path d="M48 82 Q60 91 74 80" fill="none" stroke="#111111" stroke-width="3.5" stroke-linecap="round" />
+                            <line x1="16" y1="68" x2="36" y2="71" stroke="#111111" stroke-width="2.5" />
+                            <line x1="15" y1="77" x2="36" y2="77" stroke="#111111" stroke-width="2.5" />
+                            <line x1="84" y1="71" x2="104" y2="68" stroke="#111111" stroke-width="2.5" />
+                            <line x1="84" y1="77" x2="105" y2="77" stroke="#111111" stroke-width="2.5" />
+                          </svg>
+                        </div>
+
+                        <!-- Rotating Drum Agitator Ribs -->
+                        <div id="drumRibs" class="drum-ribs">
+                          <div class="rib"></div>
+                          <div class="rib rib-2"></div>
+                          <div class="rib rib-3"></div>
+                        </div>
+
+                        <!-- Animated Detergent Liquid & Bubbles -->
+                        <div id="liquidLayer" class="liquid-layer">
+                          <svg class="liquid-wave" viewBox="0 0 400 120" preserveAspectRatio="none">
+                            <path
+                              id="wavePath"
+                              d="M0,26 Q50,6 100,26 T200,26 T300,26 T400,26 L400,120 L0,120 Z"
+                              fill="#00E5FF"
+                            />
+                          </svg>
+                          <div class="bubble" style="width: 14px; height: 14px; left: 28%; bottom: 26px"></div>
+                          <div class="bubble" style="width: 10px; height: 10px; left: 54%; bottom: 18px; animation-delay: 0.8s"></div>
+                          <div class="bubble" style="width: 16px; height: 16px; left: 72%; bottom: 24px; animation-delay: 1.4s"></div>
+                        </div>
+
+                        <div class="glass-glare"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="machine-footer">
+                    <span class="spec-plate">MAX 8s // CLIENT-SIDE AI</span>
+                    <div class="vent-slots">
+                      <span class="vent-slot"></span>
+                      <span class="vent-slot"></span>
+                      <span class="vent-slot"></span>
+                      <span class="vent-slot"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="machine-side-depth"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: SWISS INSTRUCTION POSTER & DETERGENT PROPS -->
+          <div class="right-wall-col">
+            <div class="wall-poster">
+              <h3>00 // LAUNDRY RULES</h3>
+              <ul>
+                <li>01. DROP PNG / MP4 / GIF</li>
+                <li>02. CROP FOCUS OBJECT</li>
+                <li>03. SET TARGET IN MB</li>
+                <li>04. WASH / SPIN / BOTH</li>
+              </ul>
+            </div>
+
+            <div class="detergent-shelf">
+              <div class="bottle" id="bottleWash" style="background: var(--wash-accent)"></div>
+              <div class="bottle" id="bottleSpin" style="background: var(--spin-accent); height: 50px"></div>
+              <div class="bottle" id="bottleBoth" style="background: var(--both-accent); height: 68px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PERSPECTIVE TILED FLOOR -->
+      <div class="room-floor">
+        <div class="floor-glow"></div>
+      </div>
+    </main>
+
+    <!-- COLOR SWATCH INSPECTOR CARD -->
+    <section class="inspector-card">
+      <div class="inspector-head">
+        <h2 id="inspectorTitle">SWATCH INSPECTOR // PALET A — SWISS COIN-OP 24H (DAY SHIFT)</h2>
+        <span class="mono" style="font-size: 12px; color: var(--ui-muted)">
+          Toggle Siang/Malam di kanan atas untuk melihat perubahan ruangan &amp; neon glow
+        </span>
+      </div>
+      <div id="swatchGrid" class="swatch-grid"></div>
+    </section>
+  </div>
+
+  <script>
+    const PALETTES = {
+      A: {
+        name: "PALET A — SWISS COIN-OP 24H",
+        day: {
+          wall: "#ECE6DC",
+          wallGrid: "rgba(17, 17, 17, 0.11)",
+          floorA: "#DDD5C7",
+          floorB: "#CFC5B4",
+          pipe: "#BDB5A6",
+          machineBody: "#FFFDF8",
+          machineSide: "#E5DFD3",
+          panel: "#D8D3C8",
+          panelText: "#111111",
+          wash: "#00E5FF",
+          spin: "#FF5416",
+          both: "#FFE600",
+          uiBg: "#F4F0EA",
+          uiCard: "#FFFFFF",
+          uiText: "#111111",
+          uiMuted: "#525252",
+          ink: "#111111",
+          shadow: "#111111",
+          signBg: "#111111",
+          signText: "#FFE600",
+          signBorder: "#111111",
+          neonGlow: "0px 0px 0px transparent"
+        },
+        night: {
+          wall: "#121A26",
+          wallGrid: "rgba(148, 163, 184, 0.14)",
+          floorA: "#0E1520",
+          floorB: "#172233",
+          pipe: "#283548",
+          machineBody: "#1E293B",
+          machineSide: "#131C2B",
+          panel: "#0F172A",
+          panelText: "#F8FAFC",
+          wash: "#00E5FF",
+          spin: "#FF5416",
+          both: "#FFE600",
+          uiBg: "#0B111A",
+          uiCard: "#162030",
+          uiText: "#F8FAFC",
+          uiMuted: "#94A3B8",
+          ink: "#090D16",
+          shadow: "#05080E",
+          signBg: "#090D16",
+          signText: "#00E5FF",
+          signBorder: "#00E5FF",
+          neonGlow: "0 0 18px rgba(0, 229, 255, 0.45)"
+        }
+      },
+      B: {
+        name: "PALET B — TOKYO MINT LAUNDROMAT",
+        day: {
+          wall: "#DFF0EA",
+          wallGrid: "rgba(17, 45, 42, 0.12)",
+          floorA: "#D0E5DD",
+          floorB: "#BDD7CE",
+          pipe: "#A8C6BC",
+          machineBody: "#FAF6EE",
+          machineSide: "#E6DFD2",
+          panel: "#C6DDD4",
+          panelText: "#111111",
+          wash: "#00D1B2",
+          spin: "#FF5A36",
+          both: "#FFB800",
+          uiBg: "#EBF6F2",
+          uiCard: "#FAF6EE",
+          uiText: "#111111",
+          uiMuted: "#46635C",
+          ink: "#111111",
+          shadow: "#111111",
+          signBg: "#13312E",
+          signText: "#FFB800",
+          signBorder: "#111111",
+          neonGlow: "0px 0px 0px transparent"
+        },
+        night: {
+          wall: "#0D1F22",
+          wallGrid: "rgba(94, 234, 212, 0.12)",
+          floorA: "#091719",
+          floorB: "#11282C",
+          pipe: "#1E4046",
+          machineBody: "#173136",
+          machineSide: "#102327",
+          panel: "#0F2428",
+          panelText: "#E6FFFA",
+          wash: "#00F5D4",
+          spin: "#FF6B4A",
+          both: "#FFB800",
+          uiBg: "#081417",
+          uiCard: "#12272C",
+          uiText: "#ECFDF5",
+          uiMuted: "#8BB3B0",
+          ink: "#061012",
+          shadow: "#040A0B",
+          signBg: "#081417",
+          signText: "#FFB800",
+          signBorder: "#FFB800",
+          neonGlow: "0 0 18px rgba(255, 184, 0, 0.45)"
+        }
+      },
+      C: {
+        name: "PALET C — BAUHAUS HEAVY DUTY",
+        day: {
+          wall: "#F4F3EF",
+          wallGrid: "rgba(17, 17, 17, 0.13)",
+          floorA: "#E4E2DC",
+          floorB: "#D3D0C8",
+          pipe: "#BFBDB4",
+          machineBody: "#FFD026",
+          machineSide: "#E0B416",
+          panel: "#1E40AF",
+          panelText: "#FFFFFF",
+          wash: "#2563EB",
+          spin: "#EF4444",
+          both: "#FFD026",
+          uiBg: "#ECEAE4",
+          uiCard: "#FFFFFF",
+          uiText: "#111111",
+          uiMuted: "#525252",
+          ink: "#111111",
+          shadow: "#111111",
+          signBg: "#1E40AF",
+          signText: "#FFD026",
+          signBorder: "#111111",
+          neonGlow: "0px 0px 0px transparent"
+        },
+        night: {
+          wall: "#0F172A",
+          wallGrid: "rgba(255, 255, 255, 0.1)",
+          floorA: "#0B1120",
+          floorB: "#16203A",
+          pipe: "#2B3654",
+          machineBody: "#1E2540",
+          machineSide: "#151A2F",
+          panel: "#14192E",
+          panelText: "#F8FAFC",
+          wash: "#38BDF8",
+          spin: "#FF3366",
+          both: "#FFE600",
+          uiBg: "#090D1A",
+          uiCard: "#161D33",
+          uiText: "#F8FAFC",
+          uiMuted: "#94A3B8",
+          ink: "#05070F",
+          shadow: "#04060D",
+          signBg: "#0A0E1C",
+          signText: "#FF3366",
+          signBorder: "#FF3366",
+          neonGlow: "0 0 18px rgba(255, 51, 102, 0.45)"
+        }
+      }
+    };
+
+    const state = {
+      palette: "A",
+      mode: "day",
+      cycle: "wash",
+      spinning: false
+    };
+
+    const root = document.documentElement;
+    const toggleInput = document.getElementById("toggle");
+    const shiftBadge = document.getElementById("shiftBadge");
+    const spinAnimBtn = document.getElementById("spinAnimBtn");
+    const drumRibs = document.getElementById("drumRibs");
+    const memeSubject = document.getElementById("memeSubject");
+    const machine25d = document.getElementById("machine25d");
+    const wavePath = document.getElementById("wavePath");
+    const liquidLayer = document.getElementById("liquidLayer");
+    const ledText = document.getElementById("ledText");
+    const ledStatus = document.getElementById("ledStatus");
+    const rotaryDial = document.getElementById("rotaryDial");
+    const inspectorTitle = document.getElementById("inspectorTitle");
+    const swatchGrid = document.getElementById("swatchGrid");
+
+    function applyTheme() {
+      const pal = PALETTES[state.palette];
+      const theme = pal[state.mode];
+      const activeAccent = theme[state.cycle];
+
+      document.body.classList.toggle("night", state.mode === "night");
+
+      root.style.setProperty("--ink", theme.ink);
+      root.style.setProperty("--shadow-color", theme.shadow);
+      root.style.setProperty("--wall", theme.wall);
+      root.style.setProperty("--wall-grid", theme.wallGrid);
+      root.style.setProperty("--floor-a", theme.floorA);
+      root.style.setProperty("--floor-b", theme.floorB);
+      root.style.setProperty("--pipe", theme.pipe);
+      root.style.setProperty("--machine-body", theme.machineBody);
+      root.style.setProperty("--machine-side", theme.machineSide);
+      root.style.setProperty("--panel", theme.panel);
+      root.style.setProperty("--panel-text", theme.panelText);
+      root.style.setProperty("--wash-accent", theme.wash);
+      root.style.setProperty("--spin-accent", theme.spin);
+      root.style.setProperty("--both-accent", theme.both);
+      root.style.setProperty("--active-accent", activeAccent);
+      root.style.setProperty("--ui-bg", theme.uiBg);
+      root.style.setProperty("--ui-card", theme.uiCard);
+      root.style.setProperty("--ui-text", theme.uiText);
+      root.style.setProperty("--ui-muted", theme.uiMuted);
+      root.style.setProperty("--sign-bg", theme.signBg);
+      root.style.setProperty("--sign-text", theme.signText);
+      root.style.setProperty("--sign-border", theme.signBorder);
+      root.style.setProperty("--neon-glow", state.mode === "night" ? `0 0 18px ${activeAccent}77` : "0px 0px 0px transparent");
+      root.style.setProperty("--sunbeam-opacity", state.mode === "day" ? "1" : "0");
+      root.style.setProperty("--night-stars-opacity", state.mode === "night" ? "1" : "0");
+
+      wavePath.setAttribute("fill", activeAccent);
+
+      // Update cycle lamps & dial rotation
+      document.getElementById("lampWash").className = "lamp-dot" + (state.cycle === "wash" ? " on-wash" : "");
+      document.getElementById("lampSpin").className = "lamp-dot" + (state.cycle === "spin" ? " on-spin" : "");
+      document.getElementById("lampBoth").className = "lamp-dot" + (state.cycle === "both" ? " on-both" : "");
+
+      const dialAngles = { wash: -38, spin: 0, both: 38 };
+      rotaryDial.style.transform = `rotate(${dialAngles[state.cycle]}deg)`;
+
+      // Update LED text
+      if (state.cycle === "wash") {
+        ledText.textContent = "MODE: WASH // AI BG REMOVAL";
+        liquidLayer.style.height = "54%";
+        liquidLayer.style.opacity = "0.75";
+      } else if (state.cycle === "spin") {
+        ledText.textContent = "TARGET: 2.0 MB | 12 FPS | GIF";
+        liquidLayer.style.height = "26%";
+        liquidLayer.style.opacity = "0.48";
+      } else {
+        ledText.textContent = "WASH + SPIN // <= 2.0 MB GIF";
+        liquidLayer.style.height = "46%";
+        liquidLayer.style.opacity = "0.68";
+      }
+
+      ledStatus.textContent = state.spinning ? (state.cycle === "spin" ? "SPINNING" : "WASHING") : "READY";
+      shiftBadge.textContent = state.mode === "day" ? "DAY SHIFT // SIANG" : "NIGHT SHIFT // MALAM";
+
+      // Update Spin Animation classes
+      drumRibs.className = "drum-ribs";
+      memeSubject.className = "meme-subject";
+      machine25d.classList.remove("vibrating");
+
+      if (state.spinning) {
+        if (state.cycle === "spin") {
+          drumRibs.classList.add("fast-spin");
+          memeSubject.classList.add("centrifuge");
+          machine25d.classList.add("vibrating");
+        } else {
+          drumRibs.classList.add("spinning");
+          memeSubject.classList.add("tumbling");
+          if (state.cycle === "both") machine25d.classList.add("vibrating");
+        }
+      }
+
+      // Update Swatch Inspector
+      inspectorTitle.textContent = `SWATCH INSPECTOR // ${pal.name} (${state.mode === "day" ? "DAY SHIFT" : "NIGHT SHIFT"})`;
+      const swatches = [
+        { role: "Wall", hex: theme.wall },
+        { role: "Machine Body", hex: theme.machineBody },
+        { role: "Panel", hex: theme.panel },
+        { role: "Wash Accent", hex: theme.wash },
+        { role: "Spin Accent", hex: theme.spin },
+        { role: "Both Accent", hex: theme.both }
+      ];
+
+      swatchGrid.innerHTML = swatches
+        .map(
+          (s) => `
+        <div class="swatch-item">
+          <div class="swatch-box" style="background: ${s.hex}"></div>
+          <div class="swatch-meta">
+            <div class="swatch-role">${s.role}</div>
+            <div class="swatch-hex">${s.hex}</div>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+    }
+
+    // Event bindings
+    toggleInput.addEventListener("change", () => {
+      state.mode = toggleInput.checked ? "night" : "day";
+      applyTheme();
+    });
+
+    document.querySelectorAll(".palette-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".palette-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.palette = btn.dataset.palette;
+        applyTheme();
+      });
+    });
+
+    document.querySelectorAll(".cycle-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".cycle-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.cycle = btn.dataset.cycle;
+        applyTheme();
+      });
+    });
+
+    rotaryDial.addEventListener("click", () => {
+      const order = ["wash", "spin", "both"];
+      const next = order[(order.indexOf(state.cycle) + 1) % order.length];
+      state.cycle = next;
+      document.querySelectorAll(".cycle-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.cycle === next);
+      });
+      applyTheme();
+    });
+
+    spinAnimBtn.addEventListener("click", () => {
+      state.spinning = !state.spinning;
+      spinAnimBtn.classList.toggle("active", state.spinning);
+      spinAnimBtn.textContent = `TEST SPIN ANIMATION: ${state.spinning ? "ON" : "OFF"}`;
+      applyTheme();
+    });
+
+    applyTheme();
+  </script>
+</body>
+</html>
