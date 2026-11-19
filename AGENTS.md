@@ -9,7 +9,7 @@ This document provides context, architectural boundaries, visual rules, and veri
 - **Product:** A 100% client-side **AI Background Remover** and **Target-MB Image/Video/GIF Compressor** styled as an interactive 24-hour self-service laundromat.
 - **Zero Backend:** All inference, frame extraction, compression, and encoding run strictly in the user's browser. Never introduce server upload endpoints unless explicitly requested.
 - **Language Standard:** All user-facing copy, UI labels, tooltips, error messages, and documentation must be written in **English**.
-- **Active Task Tracking (`todo.md`):** Before starting any implementation or maintenance task batch, agents MUST maintain a root [`todo.md`](./todo.md) listing only the tasks currently in progress. Update checkboxes as work progresses, and **always overwrite `todo.md` completely** when previous tasks are finished and a new set of tasks begins (never append endlessly to old completed backlogs).
+- **Active Task Tracking (`todo.md`):** Before starting any implementation or maintenance task batch, agents MUST maintain a local gitignored root `todo.md` listing only the tasks currently in progress. Update checkboxes as work progresses, and **always overwrite `todo.md` completely** when previous tasks are finished and a new set of tasks begins (never append endlessly to old completed backlogs).
 
 ---
 
@@ -18,7 +18,7 @@ This document provides context, architectural boundaries, visual rules, and veri
 ```text
 ├── index.html                           # HTML shell (lang="en", Space Grotesk + JetBrains Mono fonts)
 ├── package.json                         # Dependencies & build scripts
-├── todo.md                              # Active agent task checklist (overwritten per new task batch)
+├── todo.md                              # Local gitignored active agent task checklist (created/overwritten at runtime)
 ├── src/
 │   ├── main.tsx                         # React entry point
 │   ├── index.css                        # Palet A Day/Night CSS variables, Neo-Brutalist utilities, keyframes

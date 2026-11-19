@@ -4,6 +4,7 @@ dist/
 temp/
 test-results/
 playwright-report/
+todo.md
 .env*
 *.local
 .DS_Store
