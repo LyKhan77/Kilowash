@@ -1,6 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ClipboardCheck, Copy, Download, RotateCcw, Eye, Sparkles, Wind } from 'lucide-react';
+import {
+  ClipboardCheck,
+  Copy,
+  Download,
+  RotateCcw,
+  Eye,
+  Sparkles,
+  Sticker,
+  Wind,
+} from 'lucide-react';
+import {
+  DEFAULT_HANGER_STUDIO,
+  hasActiveHangerFx,
+  renderHangerStudioImage,
+  type ExportBackdropMode,
+  type HangerStudioOptions,
+  type StickerThickness,
+} from '../services/hangerStudio';
 import { playMechanicalClick } from '../utils/laundrySfx';
 import { TouchUpCanvas, TouchUpShelf, useTouchUpBrush } from './TouchUpBrush';
 import type {
@@ -41,7 +58,69 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
   const [draggingSplit, setDraggingSplit] = useState(false);
   const [compareZoom, setCompareZoom] = useState<1 | 2 | 4>(1);
   const [compareFocus, setCompareFocus] = useState<'50% 50%' | '28% 28%' | '50% 82%'>('50% 50%');
+  const [hangerFx, setHangerFx] = useState<HangerStudioOptions>(DEFAULT_HANGER_STUDIO);
+  const [isApplyingFx, setIsApplyingFx] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
+
+  const baseBlobRef = useRef<Blob>(receipt.outputBlob);
+  const baseUrlRef = useRef<string>(receipt.outputUrl);
+  const baseDimsRef = useRef<{ width: number; height: number }>({
+    width: receipt.width,
+    height: receipt.height,
+  });
+  const lastFxBlobRef = useRef<Blob | null>(null);
+  const fxSeqRef = useRef(0);
+
+  const hangerFxRef = useRef<HangerStudioOptions>(DEFAULT_HANGER_STUDIO);
+
+  useEffect(() => {
+    if (receipt.outputBlob !== lastFxBlobRef.current) {
+      baseBlobRef.current = receipt.outputBlob;
+      baseUrlRef.current = receipt.outputUrl;
+      baseDimsRef.current = { width: receipt.width, height: receipt.height };
+      hangerFxRef.current = DEFAULT_HANGER_STUDIO;
+      setHangerFx(DEFAULT_HANGER_STUDIO);
+    }
+  }, [receipt.outputBlob, receipt.outputUrl, receipt.width, receipt.height]);
+
+  const applyHangerStudio = async (
+    updater: HangerStudioOptions | ((prev: HangerStudioOptions) => HangerStudioOptions)
+  ) => {
+    const nextFx = typeof updater === 'function' ? updater(hangerFxRef.current) : updater;
+    hangerFxRef.current = nextFx;
+    setHangerFx(nextFx);
+    if (receipt.mediaKind !== 'image') return;
+
+    const seq = ++fxSeqRef.current;
+    if (!hasActiveHangerFx(nextFx)) {
+      lastFxBlobRef.current = baseBlobRef.current;
+      setIsApplyingFx(false);
+      onOutputEdited(
+        baseBlobRef.current,
+        baseDimsRef.current.width,
+        baseDimsRef.current.height
+      );
+      return;
+    }
+
+    setIsApplyingFx(true);
+    try {
+      const rendered = await renderHangerStudioImage({
+        baseUrl: baseUrlRef.current,
+        options: nextFx,
+        format: touchUpFormat,
+        enforceTargetMB: receipt.enforcedTargetMB,
+        targetMB: receipt.targetMB,
+      });
+      if (seq !== fxSeqRef.current) return;
+      lastFxBlobRef.current = rendered.blob;
+      onOutputEdited(rendered.blob, rendered.width, rendered.height);
+    } finally {
+      if (seq === fxSeqRef.current) {
+        setIsApplyingFx(false);
+      }
+    }
+  };
 
   const touchUpFormat: ImageOutputFormat =
     receipt.fileExtension === 'png'
@@ -495,6 +574,173 @@ export const DryingLineScene: React.FC<DryingLineSceneProps> = ({
             )}
 
             <TouchUpShelf api={brush} />
+
+            {receipt.mediaKind === 'image' && (
+              <div
+                className="w-full max-w-[420px] mt-2 p-2.5 flex flex-col gap-2"
+                style={{
+                  backgroundColor: 'var(--ui-card)',
+                  color: 'var(--ui-text)',
+                  border: '3px solid var(--ink)',
+                  boxShadow: '4px 4px 0 var(--shadow-color)',
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-adaptive">
+                    <Sticker size={12} />
+                    HANGER STUDIO // EXPORT FX
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {isApplyingFx && (
+                      <span className="font-mono text-[9px] font-bold uppercase opacity-75">
+                        RENDERING...
+                      </span>
+                    )}
+                    {hasActiveHangerFx(hangerFx) && (
+                      <button
+                        type="button"
+                        disabled={brush.armed}
+                        onClick={() => {
+                          playMechanicalClick(620);
+                          void applyHangerStudio(DEFAULT_HANGER_STUDIO);
+                        }}
+                        className="neo-btn px-2 py-0.5 font-mono text-[9px] font-bold uppercase disabled:opacity-50"
+                        style={{ backgroundColor: '#FFE600', color: '#111111' }}
+                      >
+                        RESET FX
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[9px] font-bold uppercase opacity-75">
+                    EXPORT BG:
+                  </span>
+                  {(
+                    [
+                      { id: 'none', label: 'NONE' },
+                      { id: 'white', label: 'WHITE' },
+                      { id: 'slate', label: 'SLATE' },
+                      { id: 'greenscreen', label: '#00FF00' },
+                    ] as Array<{ id: ExportBackdropMode; label: string }>
+                  ).map((bg) => {
+                    const active = hangerFx.backdrop === bg.id;
+                    return (
+                      <button
+                        key={bg.id}
+                        type="button"
+                        disabled={brush.armed}
+                        onClick={() => {
+                          playMechanicalClick(700);
+                          void applyHangerStudio((prev) => ({ ...prev, backdrop: bg.id }));
+                        }}
+                        className="neo-btn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase disabled:opacity-50"
+                        style={{
+                          backgroundColor: active
+                            ? 'var(--active-accent)'
+                            : 'var(--ui-subtle)',
+                          color: active ? '#111111' : 'var(--ui-text)',
+                        }}
+                      >
+                        {bg.label}
+                      </button>
+                    );
+                  })}
+                  <label
+                    title="Pick custom export backdrop color"
+                    className="neo-btn px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase flex items-center gap-1 cursor-pointer"
+                    style={{
+                      backgroundColor:
+                        hangerFx.backdrop === 'custom'
+                          ? 'var(--active-accent)'
+                          : 'var(--ui-subtle)',
+                      color: hangerFx.backdrop === 'custom' ? '#111111' : 'var(--ui-text)',
+                    }}
+                  >
+                    <input
+                      type="color"
+                      disabled={brush.armed}
+                      value={hangerFx.customColor}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        void applyHangerStudio((prev) => ({
+                          ...prev,
+                          backdrop: 'custom',
+                          customColor: val,
+                        }));
+                      }}
+                      className="w-3.5 h-3.5 border border-black p-0 bg-transparent cursor-pointer"
+                    />
+                    CUSTOM
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={brush.armed}
+                    onClick={() => {
+                      playMechanicalClick(740);
+                      void applyHangerStudio((prev) => ({
+                        ...prev,
+                        dropShadow: !prev.dropShadow,
+                      }));
+                    }}
+                    className="neo-btn px-2 py-1 font-mono text-[10px] font-bold uppercase disabled:opacity-50"
+                    style={{
+                      backgroundColor: hangerFx.dropShadow ? '#FFE600' : 'var(--ui-subtle)',
+                      color: hangerFx.dropShadow ? '#111111' : 'var(--ui-text)',
+                    }}
+                  >
+                    {hangerFx.dropShadow ? '[✓] DROP SHADOW' : '[ ] DROP SHADOW'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={brush.armed}
+                    onClick={() => {
+                      playMechanicalClick(760);
+                      void applyHangerStudio((prev) => ({
+                        ...prev,
+                        stickerOutline: !prev.stickerOutline,
+                      }));
+                    }}
+                    className="neo-btn px-2 py-1 font-mono text-[10px] font-bold uppercase disabled:opacity-50"
+                    style={{
+                      backgroundColor: hangerFx.stickerOutline
+                        ? 'var(--clarify-accent)'
+                        : 'var(--ui-subtle)',
+                      color: hangerFx.stickerOutline ? '#111111' : 'var(--ui-text)',
+                    }}
+                  >
+                    {hangerFx.stickerOutline ? '[✓] STICKER OUTLINE' : '[ ] STICKER OUTLINE'}
+                  </button>
+
+                  {hangerFx.stickerOutline &&
+                    (['sm', 'md', 'lg'] as StickerThickness[]).map((sz) => (
+                      <button
+                        key={sz}
+                        type="button"
+                        disabled={brush.armed}
+                        onClick={() => {
+                          playMechanicalClick(680);
+                          void applyHangerStudio((prev) => ({ ...prev, stickerSize: sz }));
+                        }}
+                        className="neo-btn px-1.5 py-1 font-mono text-[9px] font-bold uppercase"
+                        style={{
+                          backgroundColor:
+                            hangerFx.stickerSize === sz ? '#00E5FF' : 'var(--ui-subtle)',
+                          color:
+                            hangerFx.stickerSize === sz ? '#111111' : 'var(--ui-text)',
+                        }}
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
             </div>
 
             {/* RIGHT: HANGING LAUNDRY CARE TAG (RECEIPT) */}

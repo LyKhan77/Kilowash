@@ -326,3 +326,59 @@ test('falls back to Steam DSP when Clarify AI 4X model hosts are unreachable', a
     page.getByRole('slider', { name: 'Before and after clarify comparison' })
   ).toBeVisible();
 });
+
+/**
+ * Hanger Studio Export FX: applying Sticker Outline, Drop Shadow, and White backdrop
+ * bakes non-destructive effects into the exported receipt blob and resets cleanly.
+ */
+test('hanger studio bakes sticker outline, drop shadow, and white backdrop into receipt', async ({
+  page,
+}) => {
+  await page.route(/huggingface\.co|hf\.co|cdn\.jsdelivr\.net/, (route) => route.abort());
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'MEME IMG' }).click();
+  await expect(page.getByRole('button', { name: 'START', exact: true })).toBeEnabled({
+    timeout: 30_000,
+  });
+
+  await page.getByRole('button', { name: 'WASH BG AI' }).click();
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+  await expect(page.getByText('CARE TAG // RECEIPT')).toBeVisible({ timeout: 60_000 });
+
+  await expect(page.getByText('900×900px')).toBeVisible();
+
+  await page.getByRole('button', { name: /\[\s*\] STICKER OUTLINE/ }).click();
+  await page.getByRole('button', { name: /\[\s*\] DROP SHADOW/ }).click();
+  await page.getByRole('button', { name: 'WHITE', exact: true }).click();
+
+  // Wait for final FX render to finish and expand resolution past 900x900
+  await expect(page.getByText('RENDERING...')).toBeHidden({ timeout: 30_000 });
+  await expect(page.getByText('900×900px')).toBeHidden({ timeout: 30_000 });
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async () => {
+          const img = Array.from(document.querySelectorAll('img')).find((el) =>
+            el.src.startsWith('blob:')
+          );
+          if (!img || !img.complete || img.naturalWidth <= 900) return 0;
+          const bmp = await createImageBitmap(await (await fetch(img.src)).blob());
+          const c = document.createElement('canvas');
+          c.width = bmp.width;
+          c.height = bmp.height;
+          const ctx = c.getContext('2d');
+          if (!ctx) return 0;
+          ctx.drawImage(bmp, 0, 0);
+          bmp.close();
+          const px = ctx.getImageData(2, 2, 1, 1).data;
+          return px[0] > 245 && px[1] > 245 && px[2] > 245 && px[3] === 255 ? c.width : 0;
+        }),
+      { timeout: 30_000 }
+    )
+    .toBeGreaterThan(900);
+
+  await page.getByRole('button', { name: 'RESET FX' }).click();
+  await expect(page.getByText('900×900px')).toBeVisible();
+});
