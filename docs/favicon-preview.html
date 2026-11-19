@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KILOWASH // Favicon Options Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link id="live-favicon" rel="icon" type="image/svg+xml" href="" />
+    <style>
+      :root {
+        --bg: #f4f0ea;
+        --wall: #ece6dc;
+        --card: #ffffff;
+        --subtle: #f7f4ee;
+        --ink: #111111;
+        --text: #111111;
+        --muted: #525252;
+        --cyan: #00e5ff;
+        --orange: #ff5416;
+        --yellow: #ffe600;
+      }
+
+      [data-shift='night'] {
+        --bg: #0b111a;
+        --wall: #121a26;
+        --card: #162030;
+        --subtle: #1d293b;
+        --ink: #060a12;
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 28px 20px 48px;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        background-color: var(--wall);
+        background-image:
+          linear-gradient(to right, rgba(128, 128, 128, 0.14) 2px, transparent 2px),
+          linear-gradient(to bottom, rgba(128, 128, 128, 0.14) 2px, transparent 2px);
+        background-size: 48px 48px;
+        color: var(--text);
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+
+      .neo-card {
+        background: var(--card);
+        border: 3px solid var(--ink);
+        box-shadow: 6px 6px 0 var(--ink);
+        padding: 20px;
+      }
+
+      .header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .badge {
+        display: inline-block;
+        background: #111111;
+        color: var(--yellow);
+        border: 2px solid var(--ink);
+        padding: 5px 10px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      h1 {
+        margin: 8px 0 4px;
+        font-size: 22px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: -0.02em;
+      }
+
+      .sub {
+        margin: 0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .btn {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        border: 2.5px solid var(--ink);
+        box-shadow: 3px 3px 0 var(--ink);
+        padding: 9px 14px;
+        cursor: pointer;
+        background: var(--yellow);
+        color: #111111;
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+      }
+
+      .btn:hover {
+        transform: translate(-1px, -1px);
+        box-shadow: 4px 4px 0 var(--ink);
+      }
+
+      .btn:active {
+        transform: translate(2px, 2px);
+        box-shadow: 1px 1px 0 var(--ink);
+      }
+
+      .btn.active {
+        background: var(--cyan);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+      }
+
+      .card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid var(--ink);
+        padding-bottom: 10px;
+        margin-bottom: 16px;
+      }
+
+      .opt-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 7px;
+        border: 2px solid var(--ink);
+        background: var(--subtle);
+        color: var(--text);
+      }
+
+      .rec-tag {
+        background: var(--cyan);
+        color: #111111;
+      }
+
+      .stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        padding: 20px 12px;
+        background: var(--subtle);
+        border: 2.5px solid var(--ink);
+        margin-bottom: 14px;
+      }
+
+      .sizes {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .size-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      .tabs-mock {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .tab-bar {
+        display: flex;
+        align-items: center;
+        padding: 7px 10px 0;
+        border: 2px solid var(--ink);
+      }
+
+      .tab-bar.light {
+        background: #dee1e6;
+      }
+
+      .tab-bar.dark {
+        background: #202124;
+      }
+
+      .tab-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 12px;
+        border-radius: 8px 8px 0 0;
+        font-family: system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        max-width: 195px;
+      }
+
+      .tab-bar.light .tab-pill {
+        background: #ffffff;
+        color: #202124;
+      }
+
+      .tab-bar.dark .tab-pill {
+        background: #35363a;
+        color: #f1f3f4;
+      }
+
+      .tab-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      h2 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .desc {
+        margin: 0 0 14px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--muted);
+        min-height: 58px;
+      }
+
+      .card-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-full {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body data-shift="day">
+    <div class="wrap">
+      <header class="neo-card header">
+        <div>
+          <span class="badge">KILOWASH // FAVICON LAB</span>
+          <h1>Minimalist SVG Favicon Options</h1>
+          <p class="sub">
+            Compare at 128px, 32px, 16px + Light/Dark browser tabs. Click a button to preview inside your real browser tab.
+          </p>
+        </div>
+        <button id="toggle-shift" class="btn" type="button">SWITCH TO NIGHT SHIFT</button>
+      </header>
+
+      <main id="grid" class="grid"></main>
+    </div>
+
+    <script>
+      const OPTIONS = [
+        {
+          id: 1,
+          badge: 'OPTION 01 // RECOMMENDED',
+          recommended: true,
+          title: 'Swiss Drum Porthole',
+          desc: 'Warm-white Neo-Brutalist frame with a heavy ink porthole drum, cyan wash wave inside, and an orange status lamp dot.',
+          svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="4" y="4" width="56" height="56" rx="10" fill="#FFFDF8" stroke="#111111" stroke-width="6"/>
+  <circle cx="50" cy="14" r="4" fill="#FF5416" stroke="#111111" stroke-width="2"/>
+  <circle cx="32" cy="34" r="18" fill="#111111"/>
+  <circle cx="32" cy="34" r="13" fill="#FFFDF8"/>
+  <path d="M19 35 Q25.5 29 32 35 T45 35 A13 13 0 0 1 19 35 Z" fill="#00E5FF"/>
+  <circle cx="32" cy="34" r="13" fill="none" stroke="#111111" stroke-width="3"/>
+</svg>`,
+        },
+        {
+          id: 2,
+          badge: 'OPTION 02 // MONOGRAM',
+          recommended: false,
+          title: '"K" Coin-Op Badge',
+          desc: 'High-contrast ink tile with bold geometric yellow "K" monogram and a sharp cyan corner notch matching the header badge.',
+          svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="4" y="4" width="56" height="56" rx="10" fill="#111111" stroke="#111111" stroke-width="4"/>
+  <path d="M44 6 H56 A4 4 0 0 1 60 10 V22 Z" fill="#00E5FF"/>
+  <rect x="16" y="15" width="9" height="34" fill="#FFE600"/>
+  <polygon points="25,32 39,15 49,15 33,32 49,49 39,49" fill="#FFE600"/>
+</svg>`,
+        },
+        {
+          id: 3,
+          badge: 'OPTION 03 // CUTOUT',
+          recommended: false,
+          title: 'Transparency Cutout Drum',
+          desc: 'Drum ring split diagonally between transparency checkerboard (BG removal) and solid wash cyan.',
+          svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="drumClip">
+      <circle cx="32" cy="32" r="20"/>
+    </clipPath>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="10" fill="#FFFDF8" stroke="#111111" stroke-width="6"/>
+  <g clip-path="url(#drumClip)">
+    <rect x="12" y="12" width="40" height="40" fill="#FFFFFF"/>
+    <rect x="12" y="12" width="10" height="10" fill="#CBD5E1"/>
+    <rect x="32" y="12" width="10" height="10" fill="#CBD5E1"/>
+    <rect x="22" y="22" width="10" height="10" fill="#CBD5E1"/>
+    <rect x="42" y="22" width="10" height="10" fill="#CBD5E1"/>
+    <rect x="12" y="32" width="10" height="10" fill="#CBD5E1"/>
+    <rect x="32" y="32" width="10" height="10" fill="#CBD5E1"/>
+    <polygon points="52,12 52,52 12,52" fill="#00E5FF"/>
+    <line x1="12" y1="52" x2="52" y2="12" stroke="#111111" stroke-width="4"/>
+  </g>
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#111111" stroke-width="6"/>
+</svg>`,
+        },
+        {
+          id: 4,
+          badge: 'OPTION 04 // SWIRL',
+          recommended: false,
+          title: 'Minimal Spin Swirl',
+          desc: 'Solid cyan Neo-Brutalist square with two crisp opposing vortex arcs and a bright yellow center core.',
+          svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="4" y="4" width="56" height="56" rx="10" fill="#00E5FF" stroke="#111111" stroke-width="6"/>
+  <path d="M18 32 A14 14 0 0 1 42 22" fill="none" stroke="#111111" stroke-width="6" stroke-linecap="round"/>
+  <path d="M46 32 A14 14 0 0 1 22 42" fill="none" stroke="#FFFDF8" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="6" fill="#FFE600" stroke="#111111" stroke-width="3"/>
+</svg>`,
+        },
+      ];
+
+      function toDataUri(svg) {
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg.trim());
+      }
+
+      const grid = document.getElementById('grid');
+      const liveFavicon = document.getElementById('live-favicon');
+      let activeId = 1;
+
+      function setLiveFavicon(id) {
+        activeId = id;
+        const opt = OPTIONS.find((o) => o.id === id);
+        if (opt) {
+          liveFavicon.href = toDataUri(opt.svg);
+        }
+        document.querySelectorAll('[data-opt-btn]').forEach((btn) => {
+          const isMatch = Number(btn.getAttribute('data-opt-btn')) === id;
+          btn.classList.toggle('active', isMatch);
+          btn.textContent = isMatch ? 'ACTIVE IN BROWSER TAB' : 'TEST IN BROWSER TAB';
+        });
+      }
+
+      OPTIONS.forEach((opt) => {
+        const uri = toDataUri(opt.svg);
+        const card = document.createElement('article');
+        card.className = 'neo-card';
+        card.innerHTML = `
+          <div class="card-top">
+            <span class="opt-tag ${opt.recommended ? 'rec-tag' : ''}">${opt.badge}</span>
+          </div>
+          <div class="stage">
+            <img src="${uri}" width="96" height="96" alt="${opt.title} 96px" />
+            <div class="sizes">
+              <div class="size-row">
+                <img src="${uri}" width="32" height="32" alt="${opt.title} 32px" />
+                <span>32px</span>
+              </div>
+              <div class="size-row">
+                <img src="${uri}" width="16" height="16" alt="${opt.title} 16px" />
+                <span>16px</span>
+              </div>
+            </div>
+          </div>
+          <div class="tabs-mock">
+            <div class="tab-bar light">
+              <div class="tab-pill">
+                <img src="${uri}" width="16" height="16" alt="" />
+                <span class="tab-title">KILOWASH // 24H Dry-Clean</span>
+              </div>
+            </div>
+            <div class="tab-bar dark">
+              <div class="tab-pill">
+                <img src="${uri}" width="16" height="16" alt="" />
+                <span class="tab-title">KILOWASH // 24H Dry-Clean</span>
+              </div>
+            </div>
+          </div>
+          <h2>${opt.title}</h2>
+          <p class="desc">${opt.desc}</p>
+          <div class="card-actions">
+            <button type="button" class="btn btn-full" data-opt-btn="${opt.id}">
+              TEST IN BROWSER TAB
+            </button>
+          </div>
+        `;
+        card.querySelector('button').addEventListener('click', () => setLiveFavicon(opt.id));
+        grid.appendChild(card);
+      });
+
+      setLiveFavicon(1);
+
+      const shiftBtn = document.getElementById('toggle-shift');
+      shiftBtn.addEventListener('click', () => {
+        const next = document.body.getAttribute('data-shift') === 'night' ? 'day' : 'night';
+        document.body.setAttribute('data-shift', next);
+        shiftBtn.textContent = next === 'night' ? 'SWITCH TO DAY SHIFT' : 'SWITCH TO NIGHT SHIFT';
+      });
+    </script>
+  </body>
+</html>

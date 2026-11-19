@@ -2,6 +2,6 @@
 
 > **Rule:** This file tracks only the tasks currently being worked on by the agent. Overwrite this file completely whenever previous tasks are completed and a new task batch begins (see `AGENTS.md`).
 
-- [x] **Audit Vercel Readiness:** Check static build output (`dist/`), SPA routing, WASM/Web Worker headers & MIME handling, asset paths (`/models/lee-voxel.glb`), and Vercel config needs.
-- [x] **Add Vercel Config (if needed):** Create/verify `vercel.json` (or fix any deployment issues found) and verify with `npm run build`.
-- [x] **Initialize Git Repository:** Run `git init`, configure remote `origin` (`https://github.com/LyKhan77/Kilowash.git`), verify `.gitignore` exclusions, and check remote/commit readiness.
+- [x] **Create `public/favicon.svg` (Option 4):** Save the Minimal Spin Swirl SVG as `public/favicon.svg` and link it in `index.html`.
+- [x] **Build & Push to GitHub:** Run `npm run build`, verify `dist/favicon.svg`, commit changes, and push to `origin/main`.
+- [ ] **Verify Live Deployment:** Wait for Vercel production build (`kilowash-lee.vercel.app`) to reach `READY` and verify `/favicon.svg` responds `200 OK`.
